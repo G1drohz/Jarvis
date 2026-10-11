@@ -1,0 +1,35 @@
+app:
+  name: JARVIS
+  version: "0.1.0"
+  debug: true
+
+ai:
+  provider: openai   # openai | stub
+  model: gpt-4o-mini
+  temperature: 0.7
+  max_tokens: 1024
+
+memory:
+  path: data/jarvis_memory.db
+
+ui:
+  theme: dark
+  window_width: 900
+  window_height: 650
+
+permissions:
+  allow_system_commands: false
+  allow_file_access: true
+  allow_network: true
+
+stt:
+  enabled: false
+  engine: stub
+
+tts:
+  enabled: false
+  engine: stub
+  voice: jarvis
+
+vision:
+  enabled: false
