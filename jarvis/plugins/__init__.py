@@ -1,1 +1,3 @@
-"""Plugin system placeholder."""
+from .loader import PluginLoader
+
+__all__ = ["PluginLoader"]

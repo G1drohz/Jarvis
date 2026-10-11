@@ -1,3 +1,3 @@
-from .stub import VisionEngine
+from .engine import VisionEngine
 
 __all__ = ["VisionEngine"]

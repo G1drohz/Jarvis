@@ -1,0 +1,57 @@
+{
+  "collections": [
+    {
+      "id": "windows",
+      "name": "Windows",
+      "scenarios": [
+        {
+          "id": "vol_up",
+          "name": "Громче",
+          "phrase": "сделай громче",
+          "aliases": ["turn it up", "volume up", "громче"],
+          "actions": [{"type": "key", "value": "volumeup"}],
+          "enabled": true,
+          "require_confirm": false
+        },
+        {
+          "id": "vol_down",
+          "name": "Тише",
+          "phrase": "сделай тише",
+          "aliases": ["turn it down", "volume down", "тише"],
+          "actions": [{"type": "key", "value": "volumedown"}],
+          "enabled": true,
+          "require_confirm": false
+        },
+        {
+          "id": "notepad",
+          "name": "Блокнот",
+          "phrase": "открой блокнот",
+          "aliases": ["open notepad", "блокнот"],
+          "actions": [{"type": "launch", "value": "notepad.exe"}],
+          "enabled": true,
+          "require_confirm": false
+        }
+      ]
+    },
+    {
+      "id": "browser",
+      "name": "Browser",
+      "scenarios": [
+        {
+          "id": "youtube",
+          "name": "YouTube",
+          "phrase": "открой ютуб",
+          "aliases": ["open youtube", "youtube"],
+          "actions": [{"type": "url", "value": "https://youtube.com"}],
+          "enabled": true,
+          "require_confirm": false
+        }
+      ]
+    },
+    {
+      "id": "custom",
+      "name": "Custom",
+      "scenarios": []
+    }
+  ]
+}
