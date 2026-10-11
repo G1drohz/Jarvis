@@ -1,7 +1,6 @@
-"""Luxify-style multi-page JARVIS UI — re-export run_ui from app bootstrap."""
+"""Public UI entry."""
 
-# Keep full MainWindow implementation; run_ui comes from app.py for tray support.
-from jarvis.ui.window import MainWindow  # noqa: F401
-from jarvis.ui.app import run_ui  # noqa: F401
+from jarvis.ui.window_impl import MainWindow
+from jarvis.ui.app import run_ui
 
 __all__ = ["MainWindow", "run_ui"]

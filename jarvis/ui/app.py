@@ -1,4 +1,4 @@
-"""Application bootstrap: MainWindow + tray + Luxify desktop behavior."""
+"""Application bootstrap: MainWindow + system tray (Luxify-style)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-from jarvis.ui.main_window import MainWindow
 from jarvis.ui.tray import TrayController, make_tray_icon
+from jarvis.ui.window_impl import MainWindow
 
 if TYPE_CHECKING:
     from jarvis.core.agent import Agent
@@ -21,12 +21,10 @@ def run_ui(agent: "Agent") -> None:
     app.setApplicationName("JARVIS")
     app.setOrganizationName("JARVIS")
     app.setFont(QFont("Segoe UI", 10))
-    app.setQuitOnLastWindowClosed(False)  # stay in tray
+    app.setQuitOnLastWindowClosed(False)
 
     window = MainWindow(agent)
     window.setWindowIcon(make_tray_icon())
-
-    # Close → hide to tray (Luxify-style)
     window._force_quit = False
     _orig_close = window.closeEvent
 
@@ -36,8 +34,9 @@ def run_ui(agent: "Agent") -> None:
             return
         event.ignore()
         window.hide()
-        if hasattr(window, "_tray") and window._tray:
-            window._tray.notify("JARVIS", "Работаю в трее. Кликни по иконке, чтобы открыть.")
+        tray = getattr(window, "_tray", None)
+        if tray:
+            tray.notify("JARVIS", "Работаю в трее / Running in tray")
 
     window.closeEvent = close_event  # type: ignore[method-assign]
 
@@ -52,7 +51,6 @@ def run_ui(agent: "Agent") -> None:
 
         def quit_app() -> None:
             window._force_quit = True
-            # stop workers properly
             try:
                 from PySide6.QtCore import QMetaObject
 
@@ -65,12 +63,15 @@ def run_ui(agent: "Agent") -> None:
                 window._voice_thread.wait(1000)
             except Exception:
                 pass
-            if window.voice.tts_ok:
-                try:
+            try:
+                if window.voice.tts_ok:
                     window.voice.tts.stop()
-                except Exception:
-                    pass
-            window.hud.close()
+            except Exception:
+                pass
+            try:
+                window.hud.close()
+            except Exception:
+                pass
             app.quit()
 
         tray.show_window.connect(show_win)
