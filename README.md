@@ -1,89 +1,43 @@
-# JARVIS v0.2
+# JARVIS v0.2.1
 
-Локальный AI-ассистент в стиле **Luxify**: голос, сценарии, плагины, мульти-AI, Windows-управление.
+Локальный AI-ассистент для Windows в стиле **Luxify Assistant**.
 
-## Возможности
+Готовый **desktop-app** с установщиком, треем, HUD, голосом и сценариями.
 
-| Модуль | Статус |
-|--------|--------|
-| 🇷🇺 / 🇬🇧 i18n | ✅ |
-| Голос + обычный чат | ✅ |
-| Wake word «Джарвис» / Jarvis | ✅ (STT-based) |
-| Offline STT (Vosk) | ✅ если указан model path |
-| AI: OpenAI / Gemini / Claude / Grok / DeepSeek / Ollama | ✅ |
-| Плагины | ✅ auto-load |
-| Редактор команд + сценарии | ✅ |
-| Импорт / экспорт JSON | ✅ |
-| Windows / браузер / файлы | ✅ |
-| Steam / Discord / GitHub | ✅ stubs |
-| Vision (screenshot) | ✅ |
-| Память SQLite | ✅ |
-| Системный монитор | ✅ |
-| HUD overlay | ✅ |
-| Подтверждение опасных действий | ✅ |
-
-## Установка
+## Установка из исходников (разработка)
 
 ```bash
 git clone https://github.com/G1drohz/Jarvis.git
 cd Jarvis
 python -m venv .venv
-.venv\\Scripts\\activate
+.venv\Scripts\activate
 pip install -r requirements.txt
-
-# Микрофон (Windows):
-pip install pipwin && pipwin install pyaudio
-# Опционально клавиши:
-pip install pyautogui
-
+pip install pipwin && pipwin install pyaudio   # микрофон
 python -m jarvis.main
 ```
 
-## AI-ключи (env)
+## Сборка .exe + установщик
 
-```
-OPENAI_API_KEY=
-GEMINI_API_KEY=
-ANTHROPIC_API_KEY=
-XAI_API_KEY=
-DEEPSEEK_API_KEY=
+```bat
+packaging\build.bat
 ```
 
-В `config/default.yaml`: `ai.provider: openai|gemini|claude|grok|deepseek|ollama|stub`
+Получишь `dist\JARVIS\JARVIS.exe`.
 
-Ollama: локально `ollama serve`, provider `ollama`.
+Установщик (Inno Setup 6):
+1. Установи [Inno Setup](https://jrsoftware.org/isinfo.php)
+2. Открой `packaging\installer.iss` → Compile
+3. Файл: `dist\installer\JARVIS-Setup-0.2.1.exe`
 
-## Offline STT (Vosk)
+Подробнее: [docs/build.md](docs/build.md)
 
-1. Скачай модель: https://alphacephei.com/vosk/models  
-2. В `config/default.yaml`:
-```yaml
-stt:
-  engine: vosk
-  vosk_model_path: "C:/models/vosk-model-small-ru"
-```
+## Возможности
 
-## Голос
-
-- **🎤** — одноразовое распознавание
-- **Wake word** — непрерывный режим, фраза «джарвис …»
-- Сценарии: «открой блокнот», «открой ютуб», «сделай громче»
-
-## Структура
-
-```
-jarvis/
-  ai/           # multi-provider
-  scenarios/    # Luxify-style commands
-  plugins/      # auto-load .py
-  tools/        # windows, browser, files
-  integrations/ # steam, discord, github
-  voice/        # STT/TTS/wake
-  vision/       # screenshot
-  monitor/      # CPU/RAM
-  ui/           # Luxify UI + HUD
-  safety/       # confirmations
-  i18n/         # ru/en
-```
+- UI как у Luxify: сайдбар (сворачивается), Home, Commands, AI, Monitor, Plugins, Settings
+- Системный трей (закрытие → в трей)
+- Голос + wake word «Джарвис»
+- Редактор сценариев + импорт/экспорт
+- AI: OpenAI / Gemini / Claude / Grok / DeepSeek / Ollama
+- Windows / браузер / файлы, HUD, монитор, безопасность
 
 MIT
