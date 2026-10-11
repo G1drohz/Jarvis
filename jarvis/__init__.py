@@ -1,3 +1,3 @@
-"""JARVIS — local personal AI assistant (v0.1 starter)."""
+"""JARVIS — local personal AI assistant."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

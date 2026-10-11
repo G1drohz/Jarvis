@@ -1,16 +1,19 @@
-"""Luxify-style multi-page main window for JARVIS with voice control."""
+"""Luxify-style multi-page JARVIS UI v0.2."""
 
 from __future__ import annotations
 
+import json
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Slot, QMetaObject, Q_ARG
+from PySide6.QtCore import Qt, Slot, QMetaObject, QTimer
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -27,20 +30,17 @@ from PySide6.QtWidgets import (
 )
 
 from config.settings import settings
+from jarvis.ai.base import PROVIDERS
+from jarvis.i18n import t, set_language, get_language
+from jarvis.monitor.system import SystemMonitor
+from jarvis.scenarios.models import Action, Scenario
+from jarvis.ui.hud import HUDWindow
 from jarvis.ui.styles import DARK_QSS
-from jarvis.ui.voice_worker import start_voice_thread
+from jarvis.ui.voice_worker import start_voice_thread, start_wake_thread
 from jarvis.voice.controller import VoiceController
 
 if TYPE_CHECKING:
     from jarvis.core.agent import Agent
-
-
-NAV = [
-    ("home", "🏠  Home"),
-    ("commands", "⚡  Commands"),
-    ("ai", "✦  JARVIS AI"),
-    ("settings", "⚙  Settings"),
-]
 
 
 class SidebarButton(QPushButton):
@@ -61,15 +61,13 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.agent = agent
         self.setWindowTitle(f"{settings.app.name} v{settings.app.version}")
-        self.resize(
-            settings.ui.window_width or 1100,
-            settings.ui.window_height or 720,
-        )
-        self.setMinimumSize(800, 560)
+        self.resize(settings.ui.window_width, settings.ui.window_height)
+        self.setMinimumSize(900, 600)
         self._listening = False
         self._nav_buttons: dict[str, SidebarButton] = {}
+        self._current_collection_id = "custom"
+        self.monitor = SystemMonitor()
 
-        # Voice
         self.voice = VoiceController(agent)
         agent.voice = self.voice
         self._voice_thread, self._voice_worker = start_voice_thread(self.voice)
@@ -77,43 +75,72 @@ class MainWindow(QMainWindow):
         self._voice_worker.finished.connect(self._on_voice_finished)
         self._voice_worker.failed.connect(self._on_voice_failed)
 
+        self._wake_thread, self._wake_worker = start_wake_thread(self.voice)
+        self._wake_worker.status.connect(self._on_wake_status)
+        self._wake_worker.command.connect(self._on_wake_command)
+        self._wake_worker.failed.connect(self._on_voice_failed)
+
+        self.hud = HUDWindow()
+        if settings.ui.hud_enabled:
+            self.hud.show_near_corner()
+
         self.setStyleSheet(DARK_QSS)
         self._build()
-
-        # Show voice status on startup
         self._append("system", self.voice.status_message())
+        self._append(
+            "system",
+            t(
+                "app.ready",
+                name=settings.app.name,
+                wake=settings.voice.wake_word,
+            ),
+        )
+
+        if settings.voice.continuous and self.voice.stt_ok:
+            QMetaObject.invokeMethod(
+                self._wake_worker, "start_loop", Qt.ConnectionType.QueuedConnection
+            )
+
+        self._mon_timer = QTimer(self)
+        self._mon_timer.timeout.connect(self._refresh_monitor)
+        self._mon_timer.start(2000)
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        QMetaObject.invokeMethod(
+            self._wake_worker, "stop_loop", Qt.ConnectionType.QueuedConnection
+        )
+        self._wake_thread.quit()
         self._voice_thread.quit()
-        self._voice_thread.wait(2000)
+        self._wake_thread.wait(1500)
+        self._voice_thread.wait(1500)
         if self.voice.tts_ok:
             self.voice.tts.stop()
+        self.hud.close()
         super().closeEvent(event)
 
-    # ── layout ─────────────────────────────────────────────────────
     def _build(self) -> None:
         root = QWidget()
         self.setCentralWidget(root)
-        root_layout = QHBoxLayout(root)
-        root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(0)
+        layout = QHBoxLayout(root)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        sidebar = self._build_sidebar()
-        root_layout.addWidget(sidebar)
-
+        layout.addWidget(self._build_sidebar())
         self.stack = QStackedWidget()
         self.stack.setObjectName("content")
-        root_layout.addWidget(self.stack, stretch=1)
+        layout.addWidget(self.stack, stretch=1)
 
+        self.page_keys = ["home", "commands", "ai", "monitor", "plugins", "settings"]
         self.pages = {
             "home": self._page_home(),
             "commands": self._page_commands(),
             "ai": self._page_ai(),
+            "monitor": self._page_monitor(),
+            "plugins": self._page_plugins(),
             "settings": self._page_settings(),
         }
-        for key in ("home", "commands", "ai", "settings"):
-            self.stack.addWidget(self.pages[key])
-
+        for k in self.page_keys:
+            self.stack.addWidget(self.pages[k])
         self._switch("home")
 
     def _build_sidebar(self) -> QWidget:
@@ -127,35 +154,39 @@ class MainWindow(QMainWindow):
         title = QLabel(settings.app.name)
         title.setObjectName("sidebarTitle")
         lay.addWidget(title)
-
-        sub = QLabel(f"v{settings.app.version}  ·  voice ready")
+        sub = QLabel(f"v{settings.app.version}")
         sub.setObjectName("sidebarSub")
         lay.addWidget(sub)
-        lay.addSpacing(20)
+        lay.addSpacing(16)
 
-        for key, label in NAV:
+        nav = [
+            ("home", t("nav.home")),
+            ("commands", t("nav.commands")),
+            ("ai", t("nav.ai")),
+            ("monitor", t("nav.monitor")),
+            ("plugins", t("nav.plugins")),
+            ("settings", t("nav.settings")),
+        ]
+        for key, label in nav:
             btn = SidebarButton(key, label)
             btn.clicked.connect(lambda checked=False, k=key: self._switch(k))
             self._nav_buttons[key] = btn
             lay.addWidget(btn)
 
         lay.addStretch(1)
-
-        status_row = QHBoxLayout()
+        row = QHBoxLayout()
         self.status_dot = QLabel("●")
         self.status_dot.setObjectName("statusDot")
-        status_row.addWidget(self.status_dot)
-        self.status_label = QLabel("Online")
+        row.addWidget(self.status_dot)
+        self.status_label = QLabel(t("status.online"))
         self.status_label.setObjectName("statusText")
-        status_row.addWidget(self.status_label)
-        status_row.addStretch()
-        lay.addLayout(status_row)
-
+        row.addWidget(self.status_label)
+        row.addStretch()
+        lay.addLayout(row)
         return side
 
     def _switch(self, key: str) -> None:
-        idx = list(self.pages.keys()).index(key)
-        self.stack.setCurrentIndex(idx)
+        self.stack.setCurrentIndex(self.page_keys.index(key))
         for k, btn in self._nav_buttons.items():
             btn.set_active(k == key)
 
@@ -167,303 +198,423 @@ class MainWindow(QMainWindow):
         lay.setSpacing(14)
 
         header = QHBoxLayout()
-        title_col = QVBoxLayout()
-        t = QLabel("Home")
-        t.setObjectName("pageTitle")
-        title_col.addWidget(t)
-        s = QLabel("Голос · история · чат")
-        s.setObjectName("pageSub")
-        title_col.addWidget(s)
-        header.addLayout(title_col)
+        col = QVBoxLayout()
+        t1 = QLabel(t("home.title"))
+        t1.setObjectName("pageTitle")
+        col.addWidget(t1)
+        t2 = QLabel(t("home.sub"))
+        t2.setObjectName("pageSub")
+        col.addWidget(t2)
+        header.addLayout(col)
         header.addStretch()
-
         self.mic_btn = QPushButton("🎤")
         self.mic_btn.setObjectName("mic")
-        self.mic_btn.setToolTip("Нажми и говори (распознавание речи)")
         self.mic_btn.clicked.connect(self._on_mic)
         header.addWidget(self.mic_btn)
         lay.addLayout(header)
 
         body = QHBoxLayout()
-        body.setSpacing(14)
-
         hist_card = QFrame()
         hist_card.setObjectName("card")
-        hist_lay = QVBoxLayout(hist_card)
-        hist_lay.setContentsMargins(14, 12, 14, 12)
-        hl = QLabel("История команд")
-        hl.setStyleSheet("font-weight: 600; color: #9ca3af; font-size: 12px;")
-        hist_lay.addWidget(hl)
+        hl = QVBoxLayout(hist_card)
+        hl.setContentsMargins(14, 12, 14, 12)
+        hl.addWidget(QLabel(t("home.history")))
         self.history_list = QListWidget()
-        self.history_list.setMinimumWidth(240)
-        hist_lay.addWidget(self.history_list)
-        body.addWidget(hist_card, stretch=1)
+        hl.addWidget(self.history_list)
+        body.addWidget(hist_card, 1)
 
         chat_card = QFrame()
         chat_card.setObjectName("card")
-        chat_lay = QVBoxLayout(chat_card)
-        chat_lay.setContentsMargins(14, 12, 14, 12)
-        cl = QLabel("Диалог")
-        cl.setStyleSheet("font-weight: 600; color: #9ca3af; font-size: 12px;")
-        chat_lay.addWidget(cl)
-
+        cl = QVBoxLayout(chat_card)
+        cl.setContentsMargins(14, 12, 14, 12)
+        cl.addWidget(QLabel(t("home.chat")))
         self.chat = QTextEdit()
         self.chat.setReadOnly(True)
-        chat_lay.addWidget(self.chat, stretch=1)
+        cl.addWidget(self.chat, 1)
 
-        input_row = QHBoxLayout()
+        row = QHBoxLayout()
         self.input = QLineEdit()
-        self.input.setPlaceholderText("Напиши или нажми 🎤 и говори…")
+        self.input.setPlaceholderText(
+            t("home.placeholder", wake=settings.voice.wake_word)
+        )
         self.input.returnPressed.connect(self._on_send)
-        input_row.addWidget(self.input, stretch=1)
-
-        send = QPushButton("Отправить")
+        row.addWidget(self.input, 1)
+        send = QPushButton(t("home.send"))
         send.clicked.connect(self._on_send)
-        input_row.addWidget(send)
-
-        clear = QPushButton("Очистить")
+        row.addWidget(send)
+        clear = QPushButton(t("home.clear"))
         clear.setObjectName("secondary")
         clear.clicked.connect(self._on_clear)
-        input_row.addWidget(clear)
-        chat_lay.addLayout(input_row)
+        row.addWidget(clear)
+        cl.addLayout(row)
+        body.addWidget(chat_card, 2)
+        lay.addLayout(body, 1)
 
-        body.addWidget(chat_card, stretch=2)
-        lay.addLayout(body, stretch=1)
-
-        # Control panel
         controls = QFrame()
         controls.setObjectName("card")
         ctrl = QHBoxLayout(controls)
         ctrl.setContentsMargins(16, 12, 16, 12)
-        ctrl.setSpacing(16)
 
-        self.chk_speak = QCheckBox("Озвучивать ответы")
+        self.chk_speak = QCheckBox(t("home.speak"))
         self.chk_speak.setChecked(settings.voice.speak_replies)
-        self.chk_speak.toggled.connect(self._toggle_speak)
-
-        self.chk_silent = QCheckBox("Silent (без TTS)")
-        self.chk_silent.toggled.connect(self._toggle_silent)
-
-        self.chk_top = QCheckBox("Always on top")
+        self.chk_speak.toggled.connect(lambda v: setattr(self.voice, "speak_replies", v))
+        self.chk_wake = QCheckBox(t("home.wake"))
+        self.chk_wake.setChecked(settings.voice.continuous)
+        self.chk_wake.toggled.connect(self._toggle_wake)
+        self.chk_top = QCheckBox(t("home.ontop"))
         self.chk_top.toggled.connect(self._toggle_top)
+        self.chk_hud = QCheckBox("HUD")
+        self.chk_hud.setChecked(settings.ui.hud_enabled)
+        self.chk_hud.toggled.connect(self._toggle_hud)
 
-        for c in (self.chk_speak, self.chk_silent, self.chk_top):
+        for c in (self.chk_speak, self.chk_wake, self.chk_top, self.chk_hud):
             ctrl.addWidget(c)
-
         ctrl.addStretch()
-        vol_lbl = QLabel("TTS Vol")
-        vol_lbl.setStyleSheet("color: #6b7280;")
-        ctrl.addWidget(vol_lbl)
         self.vol = QSlider(Qt.Orientation.Horizontal)
         self.vol.setRange(0, 100)
         self.vol.setValue(int(settings.tts.volume * 100))
-        self.vol.setFixedWidth(120)
+        self.vol.setFixedWidth(100)
         self.vol.valueChanged.connect(self._on_vol)
+        ctrl.addWidget(QLabel("TTS"))
         ctrl.addWidget(self.vol)
-
         lay.addWidget(controls)
-
-        self._append(
-            "system",
-            f"{settings.app.name} готов. Нажми 🎤 или напиши help.",
-        )
         return page
 
-    # ── Commands ───────────────────────────────────────────────────
+    # ── Commands editor ────────────────────────────────────────────
     def _page_commands(self) -> QWidget:
         page = QWidget()
         lay = QVBoxLayout(page)
         lay.setContentsMargins(28, 24, 28, 20)
-        lay.setSpacing(14)
+        lay.setSpacing(12)
 
-        t = QLabel("Commands")
-        t.setObjectName("pageTitle")
-        lay.addWidget(t)
-        s = QLabel("Коллекции → папки → команды  ·  редактор (заготовка)")
-        s.setObjectName("pageSub")
-        lay.addWidget(s)
+        lay.addWidget(self._title(t("cmds.title"), t("cmds.sub")))
 
         body = QHBoxLayout()
-        body.setSpacing(14)
-
         left = QFrame()
         left.setObjectName("card")
-        left_lay = QVBoxLayout(left)
-        left_lay.setContentsMargins(12, 12, 12, 12)
-        left_lay.addWidget(QLabel("Коллекции"))
-        self.cmd_list = QListWidget()
-        for name in ("Windows", "Browser", "Media", "System", "Custom"):
-            self.cmd_list.addItem(QListWidgetItem(f"📁  {name}"))
-        left_lay.addWidget(self.cmd_list)
-        add_col = QPushButton("+ Коллекция")
-        add_col.setObjectName("secondary")
-        left_lay.addWidget(add_col)
-        body.addWidget(left, stretch=1)
+        ll = QVBoxLayout(left)
+        ll.setContentsMargins(12, 12, 12, 12)
+        ll.addWidget(QLabel(t("cmds.collections")))
+        self.col_list = QListWidget()
+        self.sc_list = QListWidget()
+        self._reload_collections()
+        self.col_list.currentRowChanged.connect(self._on_col_changed)
+        self.sc_list.currentRowChanged.connect(self._on_sc_changed)
+        ll.addWidget(self.col_list, 1)
+        ll.addWidget(QLabel("Scenarios"))
+        ll.addWidget(self.sc_list, 2)
+        body.addWidget(left, 1)
 
         right = QFrame()
         right.setObjectName("card")
-        right_lay = QVBoxLayout(right)
-        right_lay.setContentsMargins(16, 14, 16, 14)
-        right_lay.addWidget(QLabel("Команда"))
-
+        rl = QVBoxLayout(right)
+        rl.setContentsMargins(16, 14, 16, 14)
+        rl.addWidget(QLabel(t("cmds.editor")))
+        self.cmd_phrase = QLineEdit()
+        self.cmd_phrase.setPlaceholderText(t("cmds.phrase"))
+        rl.addWidget(self.cmd_phrase)
         self.cmd_name = QLineEdit()
-        self.cmd_name.setPlaceholderText("Название / голосовая фраза")
-        right_lay.addWidget(self.cmd_name)
-
+        self.cmd_name.setPlaceholderText("Name")
+        rl.addWidget(self.cmd_name)
+        rl.addWidget(QLabel(t("cmds.actions")))
         self.cmd_actions = QTextEdit()
         self.cmd_actions.setPlaceholderText(
-            "Действия:\n1. launch: notepad\n2. type: Hello\n3. key: enter"
+            "launch: notepad.exe\n"
+            "url: https://youtube.com\n"
+            "key: volumeup\n"
+            "wait: 1\n"
+            "type: Hello\n"
+            "open_path: C:\\Users"
         )
-        right_lay.addWidget(self.cmd_actions, stretch=1)
+        rl.addWidget(self.cmd_actions, 1)
 
         btns = QHBoxLayout()
-        btns.addWidget(QPushButton("Сохранить"))
-        ai_btn = QPushButton("✦ Создать с AI")
-        ai_btn.setObjectName("secondary")
-        btns.addWidget(ai_btn)
+        save = QPushButton(t("cmds.save"))
+        save.clicked.connect(self._save_scenario)
+        btns.addWidget(save)
+        run = QPushButton(t("cmds.run"))
+        run.setObjectName("secondary")
+        run.clicked.connect(self._run_scenario)
+        btns.addWidget(run)
+        exp = QPushButton(t("cmds.export"))
+        exp.setObjectName("ghost")
+        exp.clicked.connect(self._export_cmds)
+        btns.addWidget(exp)
+        imp = QPushButton(t("cmds.import"))
+        imp.setObjectName("ghost")
+        imp.clicked.connect(self._import_cmds)
+        btns.addWidget(imp)
         btns.addStretch()
-        right_lay.addLayout(btns)
-
-        body.addWidget(right, stretch=2)
-        lay.addLayout(body, stretch=1)
+        rl.addLayout(btns)
+        body.addWidget(right, 2)
+        lay.addLayout(body, 1)
         return page
+
+    def _reload_collections(self) -> None:
+        self.col_list.clear()
+        for c in self.agent.scenarios.collections:
+            self.col_list.addItem(QListWidgetItem(f"📁 {c.name}"))
+        if self.agent.scenarios.collections:
+            self.col_list.setCurrentRow(0)
+
+    def _on_col_changed(self, row: int) -> None:
+        self.sc_list.clear()
+        if row < 0 or row >= len(self.agent.scenarios.collections):
+            return
+        col = self.agent.scenarios.collections[row]
+        self._current_collection_id = col.id
+        for sc in col.scenarios:
+            self.sc_list.addItem(QListWidgetItem(f"⚡ {sc.name}  «{sc.phrase}»"))
+
+    def _on_sc_changed(self, row: int) -> None:
+        col_row = self.col_list.currentRow()
+        if col_row < 0 or row < 0:
+            return
+        col = self.agent.scenarios.collections[col_row]
+        if row >= len(col.scenarios):
+            return
+        sc = col.scenarios[row]
+        self.cmd_name.setText(sc.name)
+        self.cmd_phrase.setText(sc.phrase)
+        lines = [f"{a.type}: {a.value}" for a in sc.actions]
+        self.cmd_actions.setPlainText("\n".join(lines))
+
+    def _parse_actions(self) -> list[Action]:
+        actions = []
+        for line in self.cmd_actions.toPlainText().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if ":" in line:
+                typ, _, val = line.partition(":")
+                actions.append(Action(type=typ.strip(), value=val.strip()))
+            else:
+                actions.append(Action(type="notify", value=line))
+        return actions
+
+    @Slot()
+    def _save_scenario(self) -> None:
+        name = self.cmd_name.text().strip() or "Untitled"
+        phrase = self.cmd_phrase.text().strip()
+        actions = self._parse_actions()
+        sc = Scenario(
+            id=self.agent.scenarios.new_id(),
+            name=name,
+            phrase=phrase,
+            actions=actions,
+        )
+        self.agent.scenarios.add_scenario(self._current_collection_id, sc)
+        self._reload_collections()
+        self._append("system", f"Saved scenario: {name}")
+
+    @Slot()
+    def _run_scenario(self) -> None:
+        actions = self._parse_actions()
+        sc = Scenario(
+            id="tmp",
+            name=self.cmd_name.text() or "tmp",
+            phrase=self.cmd_phrase.text(),
+            actions=actions,
+        )
+        result = self.agent.runner.run(sc)
+        self._append("assistant", result)
+
+    @Slot()
+    def _export_cmds(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(self, "Export", "commands.json", "JSON (*.json)")
+        if path:
+            self.agent.scenarios.export(Path(path))
+            self._append("system", f"Exported → {path}")
+
+    @Slot()
+    def _import_cmds(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Import", "", "JSON (*.json)")
+        if path:
+            n = self.agent.scenarios.import_file(Path(path))
+            self._reload_collections()
+            self._append("system", f"Imported {n} scenarios")
 
     # ── AI ─────────────────────────────────────────────────────────
     def _page_ai(self) -> QWidget:
         page = QWidget()
         lay = QVBoxLayout(page)
         lay.setContentsMargins(28, 24, 28, 20)
-        lay.setSpacing(14)
-
+        lay.setSpacing(12)
         header = QHBoxLayout()
-        t = QLabel("JARVIS AI")
-        t.setObjectName("pageTitle")
-        header.addWidget(t)
+        header.addWidget(self._title_widget(t("ai.title")))
         header.addStretch()
-        self.model_combo = QComboBox()
-        self.model_combo.addItems(["stub (offline)", "gpt-4o-mini", "gpt-4o"])
-        self.model_combo.setFixedWidth(160)
-        header.addWidget(self.model_combo)
+        self.provider_combo = QComboBox()
+        self.provider_combo.addItems(PROVIDERS)
+        self.provider_combo.setCurrentText(settings.ai.provider)
+        self.provider_combo.currentTextChanged.connect(self._on_provider)
+        header.addWidget(self.provider_combo)
         lay.addLayout(header)
-
-        s = QLabel("Чат с моделью")
-        s.setObjectName("pageSub")
-        lay.addWidget(s)
-
+        sub = QLabel(t("ai.sub"))
+        sub.setObjectName("pageSub")
+        lay.addWidget(sub)
         self.ai_chat = QTextEdit()
         self.ai_chat.setReadOnly(True)
-        lay.addWidget(self.ai_chat, stretch=1)
-
+        lay.addWidget(self.ai_chat, 1)
         row = QHBoxLayout()
         self.ai_input = QLineEdit()
-        self.ai_input.setPlaceholderText("Спроси что угодно…")
         self.ai_input.returnPressed.connect(self._on_ai_send)
-        row.addWidget(self.ai_input, stretch=1)
-        send = QPushButton("Отправить")
+        row.addWidget(self.ai_input, 1)
+        send = QPushButton(t("home.send"))
         send.clicked.connect(self._on_ai_send)
         row.addWidget(send)
         lay.addLayout(row)
-
-        self._ai_append("system", "AI-чат. Без ключа — stub.")
         return page
+
+    # ── Monitor ────────────────────────────────────────────────────
+    def _page_monitor(self) -> QWidget:
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(28, 24, 28, 20)
+        lay.addWidget(self._title(t("mon.title"), t("mon.sub")))
+        card = QFrame()
+        card.setObjectName("card")
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(16, 14, 16, 14)
+        self.mon_label = QLabel("…")
+        self.mon_label.setStyleSheet("font-family: Consolas, monospace; font-size: 13px;")
+        cl.addWidget(self.mon_label)
+        self.mon_procs = QTextEdit()
+        self.mon_procs.setReadOnly(True)
+        cl.addWidget(self.mon_procs, 1)
+        lay.addWidget(card, 1)
+        return page
+
+    def _refresh_monitor(self) -> None:
+        if not hasattr(self, "mon_label"):
+            return
+        snap = self.monitor.snapshot()
+        if "error" in snap:
+            self.mon_label.setText(str(snap["error"]))
+            return
+        self.mon_label.setText(
+            f"CPU {snap.get('cpu_percent', 0):5.1f}%    "
+            f"RAM {snap.get('ram_percent', 0):5.1f}% "
+            f"({snap.get('ram_used_gb')} / {snap.get('ram_total_gb')} GB)    "
+            f"Processes: {snap.get('processes', 0)}"
+        )
+        self.mon_procs.setPlainText("\n".join(self.monitor.top_processes()))
+        if self.hud.isVisible():
+            self.hud.set_status(
+                f"CPU {snap.get('cpu_percent', 0):.0f}% · RAM {snap.get('ram_percent', 0):.0f}%"
+            )
+
+    # ── Plugins ────────────────────────────────────────────────────
+    def _page_plugins(self) -> QWidget:
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(28, 24, 28, 20)
+        lay.addWidget(self._title(t("pl.title"), t("pl.sub")))
+        card = QFrame()
+        card.setObjectName("card")
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(14, 12, 14, 12)
+        self.plugin_list = QListWidget()
+        for p in self.agent.plugins.discover():
+            status = p.error or "OK"
+            self.plugin_list.addItem(QListWidgetItem(f"🧩 {p.name}  —  {status}"))
+        cl.addWidget(self.plugin_list)
+        reload_btn = QPushButton("Reload plugins")
+        reload_btn.setObjectName("secondary")
+        reload_btn.clicked.connect(self._reload_plugins)
+        cl.addWidget(reload_btn)
+        lay.addWidget(card, 1)
+        return page
+
+    @Slot()
+    def _reload_plugins(self) -> None:
+        logs = self.agent.plugins.load_all(self.agent)
+        self.plugin_list.clear()
+        for p in self.agent.plugins.plugins:
+            self.plugin_list.addItem(
+                QListWidgetItem(f"🧩 {p.name}  —  {p.error or 'OK'}")
+            )
+        self._append("system", "Plugins: " + "; ".join(logs))
 
     # ── Settings ───────────────────────────────────────────────────
     def _page_settings(self) -> QWidget:
         page = QWidget()
         lay = QVBoxLayout(page)
         lay.setContentsMargins(28, 24, 28, 20)
-        lay.setSpacing(14)
-
-        t = QLabel("Settings")
-        t.setObjectName("pageTitle")
-        lay.addWidget(t)
-        s = QLabel("Интерфейс · AI · голос · права")
-        s.setObjectName("pageSub")
-        lay.addWidget(s)
-
+        lay.addWidget(self._title(t("set.title"), t("set.sub")))
         card = QFrame()
         card.setObjectName("card")
         cl = QVBoxLayout(card)
         cl.setContentsMargins(20, 18, 20, 18)
         cl.setSpacing(12)
 
-        cl.addWidget(self._section("Голос"))
-        stt_info = QLabel(
-            f"STT: {'OK' if self.voice.stt_ok else self.voice.stt.error}\n"
-            f"TTS: {'OK' if self.voice.tts_ok else self.voice.tts.error}\n"
-            f"Язык STT: {settings.stt.language}  ·  движок: {settings.stt.engine}"
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Language / Язык"))
+        lang = QComboBox()
+        lang.addItems(["ru", "en"])
+        lang.setCurrentText(get_language())
+        lang.currentTextChanged.connect(self._on_lang)
+        row.addWidget(lang)
+        row.addStretch()
+        cl.addLayout(row)
+
+        cl.addWidget(QLabel(self.voice.status_message()))
+        cl.addWidget(
+            QLabel(
+                f"AI: {settings.ai.provider} / {settings.ai.model}\n"
+                f"Confirm: {', '.join(settings.permissions.require_confirm_for)}"
+            )
         )
-        stt_info.setStyleSheet("color: #9ca3af; font-size: 12px;")
-        stt_info.setWordWrap(True)
-        cl.addWidget(stt_info)
-
-        cl.addWidget(QLabel(f"Wake word (скоро): «{settings.voice.wake_word}»"))
-
-        cl.addWidget(self._section("AI"))
-        row3 = QHBoxLayout()
-        row3.addWidget(QLabel("Провайдер"))
-        prov = QComboBox()
-        prov.addItems(["stub", "openai"])
-        prov.setCurrentText(settings.ai.provider)
-        row3.addWidget(prov)
-        row3.addStretch()
-        cl.addLayout(row3)
-
-        cl.addWidget(self._section("Права"))
-        cl.addWidget(QCheckBox("Системные команды"))
-        cl.addWidget(QCheckBox("Доступ к файлам"))
-        cl.addWidget(QCheckBox("Сеть"))
-
         cl.addStretch()
-        lay.addWidget(card, stretch=1)
+        lay.addWidget(card, 1)
         return page
 
-    def _section(self, text: str) -> QLabel:
-        lbl = QLabel(text)
-        lbl.setStyleSheet("font-weight: 700; color: #93c5fd; font-size: 13px; margin-top: 8px;")
-        return lbl
+    # ── helpers ────────────────────────────────────────────────────
+    def _title(self, title: str, sub: str) -> QWidget:
+        w = QWidget()
+        l = QVBoxLayout(w)
+        l.setContentsMargins(0, 0, 0, 0)
+        t1 = QLabel(title)
+        t1.setObjectName("pageTitle")
+        l.addWidget(t1)
+        t2 = QLabel(sub)
+        t2.setObjectName("pageSub")
+        l.addWidget(t2)
+        return w
 
-    # ── chat helpers ───────────────────────────────────────────────
+    def _title_widget(self, title: str) -> QLabel:
+        t1 = QLabel(title)
+        t1.setObjectName("pageTitle")
+        return t1
+
     def _append(self, role: str, text: str) -> None:
         if role == "user":
-            prefix, color = "Ты", "#60a5fa"
+            prefix, color = t("you"), "#60a5fa"
         elif role == "assistant":
             prefix, color = settings.app.name, "#34d399"
         else:
-            prefix, color = "Система", "#6b7280"
-
+            prefix, color = t("system"), "#6b7280"
         html = (
             f'<p style="margin:8px 0;">'
             f'<span style="color:{color};font-weight:600;">{prefix}:</span> '
-            f'{text.replace(chr(10), "<br>")}'
-            f"</p>"
+            f'{text.replace(chr(10), "<br>")}</p>'
         )
         self.chat.moveCursor(QTextCursor.MoveOperation.End)
         self.chat.insertHtml(html)
         self.chat.moveCursor(QTextCursor.MoveOperation.End)
-
         if role in ("user", "assistant"):
-            short = text if len(text) < 60 else text[:57] + "…"
+            short = text if len(text) < 55 else text[:52] + "…"
             self.history_list.insertItem(0, QListWidgetItem(f"{prefix}: {short}"))
 
     def _ai_append(self, role: str, text: str) -> None:
-        if role == "user":
-            prefix, color = "Ты", "#60a5fa"
-        elif role == "assistant":
-            prefix, color = "AI", "#a78bfa"
-        else:
-            prefix, color = "Система", "#6b7280"
+        color = {"user": "#60a5fa", "assistant": "#a78bfa"}.get(role, "#6b7280")
+        prefix = {"user": t("you"), "assistant": "AI"}.get(role, t("system"))
         html = (
-            f'<p style="margin:8px 0;">'
-            f'<span style="color:{color};font-weight:600;">{prefix}:</span> '
-            f'{text.replace(chr(10), "<br>")}'
-            f"</p>"
+            f'<p style="margin:8px 0;"><span style="color:{color};font-weight:600;">'
+            f"{prefix}:</span> {text.replace(chr(10), '<br>')}</p>"
         )
         self.ai_chat.moveCursor(QTextCursor.MoveOperation.End)
         self.ai_chat.insertHtml(html)
-        self.ai_chat.moveCursor(QTextCursor.MoveOperation.End)
 
-    # ── text input ─────────────────────────────────────────────────
     @Slot()
     def _on_send(self) -> None:
         text = self.input.text().strip()
@@ -473,7 +624,7 @@ class MainWindow(QMainWindow):
         self._append("user", text)
         reply = self.agent.process(text)
         self._append("assistant", reply)
-        if self.voice.speak_replies and settings.tts.enabled and reply:
+        if self.voice.speak_replies and reply:
             self.voice.speak(reply)
 
     @Slot()
@@ -491,55 +642,39 @@ class MainWindow(QMainWindow):
         self.agent.reset_history()
         self.chat.clear()
         self.history_list.clear()
-        self._append("system", "История очищена.")
 
-    # ── voice ──────────────────────────────────────────────────────
     @Slot()
     def _on_mic(self) -> None:
         if self._voice_worker.busy or self._listening:
             return
         if not self.voice.stt_ok:
-            self._append(
-                "system",
-                f"Микрофон недоступен: {self.voice.stt.error}\n"
-                "Установи: pip install SpeechRecognition\n"
-                "Windows PyAudio: pip install pipwin && pipwin install pyaudio",
-            )
+            self._append("system", f"STT: {self.voice.stt.error}")
             return
-
         self._listening = True
         self.mic_btn.setProperty("listening", True)
         self.mic_btn.style().unpolish(self.mic_btn)
         self.mic_btn.style().polish(self.mic_btn)
-        self.status_label.setText("Слушаю…")
-        self.status_dot.setStyleSheet("color: #ef4444;")
-
-        # Invoke worker on its thread
         QMetaObject.invokeMethod(
-            self._voice_worker,
-            "run_once",
-            Qt.ConnectionType.QueuedConnection,
+            self._voice_worker, "run_once", Qt.ConnectionType.QueuedConnection
         )
 
     @Slot(str)
     def _on_voice_status(self, status: str) -> None:
         labels = {
-            "calibrating": "Калибровка…",
-            "listening": "Слушаю…",
-            "recognizing": "Распознаю…",
-            "done": "Online",
+            "calibrating": t("voice.calibrating"),
+            "listening": t("voice.listening"),
+            "recognizing": t("voice.recognizing"),
+            "done": t("status.online"),
         }
         self.status_label.setText(labels.get(status, status))
-        if status == "listening":
-            self.status_dot.setStyleSheet("color: #ef4444;")
-        elif status == "recognizing":
-            self.status_dot.setStyleSheet("color: #f59e0b;")
-        elif status == "done":
-            self.status_dot.setStyleSheet("color: #22c55e;")
+        if status == "done":
             self._listening = False
             self.mic_btn.setProperty("listening", False)
             self.mic_btn.style().unpolish(self.mic_btn)
             self.mic_btn.style().polish(self.mic_btn)
+            self.status_dot.setStyleSheet("color: #22c55e;")
+        elif status == "listening":
+            self.status_dot.setStyleSheet("color: #ef4444;")
 
     @Slot(str, str)
     def _on_voice_finished(self, user_text: str, reply: str) -> None:
@@ -550,31 +685,63 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_voice_failed(self, err: str) -> None:
-        self._append("system", f"Голос: {err}")
+        self._append("system", err)
+
+    @Slot(str)
+    def _on_wake_status(self, status: str) -> None:
+        if status == "wake_listen":
+            self.status_label.setText(t("voice.wake"))
+            self.hud.set_status(t("voice.wake"))
+        elif status == "wake_triggered":
+            self.status_label.setText(t("voice.listening"))
+
+    @Slot(str)
+    def _on_wake_command(self, text: str) -> None:
+        self._append("user", text)
+        reply = self.agent.process(text)
+        self._append("assistant", reply)
+        if self.voice.speak_replies and reply:
+            self.voice.speak(reply)
 
     @Slot(bool)
-    def _toggle_speak(self, checked: bool) -> None:
-        self.voice.speak_replies = checked
-        if checked:
-            self.chk_silent.setChecked(False)
-
-    @Slot(bool)
-    def _toggle_silent(self, checked: bool) -> None:
-        if checked:
-            self.voice.speak_replies = False
-            self.chk_speak.setChecked(False)
+    def _toggle_wake(self, on: bool) -> None:
+        self.voice.wake_enabled = on
+        if on and self.voice.stt_ok:
+            QMetaObject.invokeMethod(
+                self._wake_worker, "start_loop", Qt.ConnectionType.QueuedConnection
+            )
         else:
-            self.voice.speak_replies = self.chk_speak.isChecked()
+            QMetaObject.invokeMethod(
+                self._wake_worker, "stop_loop", Qt.ConnectionType.QueuedConnection
+            )
+
+    @Slot(bool)
+    def _toggle_top(self, on: bool) -> None:
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, on)
+        self.show()
+
+    @Slot(bool)
+    def _toggle_hud(self, on: bool) -> None:
+        if on:
+            self.hud.show_near_corner()
+        else:
+            self.hud.hide()
 
     @Slot(int)
     def _on_vol(self, value: int) -> None:
-        if self.voice.tts_ok and self.voice.tts._engine is not None:
+        if self.voice.tts_ok and self.voice.tts._engine:
             self.voice.tts._engine.setProperty("volume", value / 100.0)
 
-    @Slot(bool)
-    def _toggle_top(self, checked: bool) -> None:
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, checked)
-        self.show()
+    @Slot(str)
+    def _on_provider(self, name: str) -> None:
+        self.agent.set_provider(name)
+        self._ai_append("system", f"Provider → {name}")
+
+    @Slot(str)
+    def _on_lang(self, lang: str) -> None:
+        set_language(lang)
+        settings.app.language = lang
+        self._append("system", f"Language → {lang} (restart UI labels on next launch)")
 
 
 def run_ui(agent: "Agent") -> None:

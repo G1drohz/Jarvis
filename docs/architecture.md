@@ -1,30 +1,40 @@
-# Архитектура JARVIS v0.1
-
-## Обзор
-
-JARVIS — модульный локальный ассистент.
+# Architecture v0.2
 
 ```
-UI (PySide6)
-    ↓
-Agent (core)
-    ├── AI Provider (stub / OpenAI)
-    ├── Command Registry
-    ├── Memory (SQLite)
-    ├── Permissions
-    └── Tools / Plugins
+UI (Luxify pages + HUD)
+  ├── Voice (mic / wake word)
+  └── Agent
+        ├── Commands (text plugins)
+        ├── Scenarios (phrase → multi-action)
+        ├── AI providers (OpenAI-compatible, Gemini, Claude, Ollama)
+        ├── Memory (SQLite)
+        ├── Vision (screenshot)
+        ├── Tools (Windows / browser / files)
+        ├── Integrations (Steam / Discord / GitHub)
+        ├── Plugins (discover + register)
+        └── Safety (confirm dangerous actions)
 ```
 
-## Поток сообщения
+## Scenario actions
 
-1. Пользователь вводит текст в UI (или console).
-2. `Agent.process()` сначала пробует распознать команду.
-3. Если команда не найдена — отправляет историю в AI-провайдер.
-4. Ответ сохраняется в SQLite и показывается пользователю.
+| type | example |
+|------|---------|
+| launch | notepad.exe |
+| url | https://youtube.com |
+| key | volumeup |
+| type | Hello |
+| wait | 1 |
+| open_path | C:\\Users |
+| shell | echo hi |
+| shutdown / restart | (needs confirm) |
+| delete_file | (needs confirm) |
 
-## Расширение
+## Adding a plugin
 
-- Новые команды → `jarvis/commands/` + регистрация в `CommandRegistry`.
-- Плагины → `jarvis/plugins/` (пока ручная регистрация).
-- Новый AI → реализовать `AIProvider` и добавить в `get_provider`.
-- STT / TTS / Vision — заменить stub-классы на реальные движки.
+Create `data/plugins/my_plugin.py`:
+
+```python
+def register(agent):
+    # agent.commands.register(...)
+    pass
+```
