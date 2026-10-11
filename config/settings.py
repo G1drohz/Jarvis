@@ -13,8 +13,9 @@ CONFIG_PATH = ROOT / "config" / "default.yaml"
 
 class AppSettings(BaseModel):
     name: str = "JARVIS"
-    version: str = "0.1.1"
+    version: str = "0.2.0"
     debug: bool = True
+    language: str = "ru"
 
 
 class AISettings(BaseModel):
@@ -23,6 +24,8 @@ class AISettings(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 1024
     api_key: str | None = None
+    ollama_base: str = "http://127.0.0.1:11434"
+    ollama_model: str = "llama3.2"
 
 
 class MemorySettings(BaseModel):
@@ -31,22 +34,27 @@ class MemorySettings(BaseModel):
 
 class UISettings(BaseModel):
     theme: str = "dark"
-    window_width: int = 1100
-    window_height: int = 720
+    window_width: int = 1200
+    window_height: int = 780
+    hud_enabled: bool = True
 
 
 class PermissionsSettings(BaseModel):
     allow_system_commands: bool = False
     allow_file_access: bool = True
     allow_network: bool = True
+    require_confirm_for: list[str] = Field(
+        default_factory=lambda: ["shutdown", "restart", "delete_file", "run_shell"]
+    )
 
 
 class STTSettings(BaseModel):
     enabled: bool = True
-    engine: str = "google"
+    engine: str = "auto"
     language: str = "ru-RU"
     phrase_time_limit: int = 8
     ambient_duration: float = 0.5
+    vosk_model_path: str = ""
 
 
 class TTSSettings(BaseModel):
@@ -60,11 +68,22 @@ class TTSSettings(BaseModel):
 class VoiceSettings(BaseModel):
     speak_replies: bool = True
     wake_word: str = "джарвис"
-    continuous: bool = False
+    wake_word_en: str = "jarvis"
+    continuous: bool = True
+    wake_cooldown_sec: float = 1.5
 
 
 class VisionSettings(BaseModel):
-    enabled: bool = False
+    enabled: bool = True
+
+
+class PluginsSettings(BaseModel):
+    auto_load: bool = True
+    dirs: list[str] = Field(default_factory=lambda: ["jarvis/plugins", "data/plugins"])
+
+
+class CommandsSettings(BaseModel):
+    store_path: str = "data/commands.json"
 
 
 class Settings(BaseModel):
@@ -77,6 +96,17 @@ class Settings(BaseModel):
     tts: TTSSettings = Field(default_factory=TTSSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     vision: VisionSettings = Field(default_factory=VisionSettings)
+    plugins: PluginsSettings = Field(default_factory=PluginsSettings)
+    commands: CommandsSettings = Field(default_factory=CommandsSettings)
+
+
+_ENV_KEY_MAP = {
+    "openai": "OPENAI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "claude": "ANTHROPIC_API_KEY",
+    "grok": "XAI_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+}
 
 
 def load_settings(path: Path | None = None) -> Settings:
@@ -86,10 +116,16 @@ def load_settings(path: Path | None = None) -> Settings:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if api_key:
-        data.setdefault("ai", {})["api_key"] = api_key
-        data.setdefault("ai", {})["provider"] = data.get("ai", {}).get("provider", "openai")
+    ai = data.setdefault("ai", {})
+    provider = (ai.get("provider") or "stub").lower()
+
+    # Generic OPENAI_API_KEY still works for openai-compatible
+    for prov, env_name in _ENV_KEY_MAP.items():
+        key = os.getenv(env_name)
+        if key and provider == prov:
+            ai["api_key"] = key
+    if not ai.get("api_key") and os.getenv("OPENAI_API_KEY"):
+        ai["api_key"] = os.getenv("OPENAI_API_KEY")
 
     return Settings(**data)
 

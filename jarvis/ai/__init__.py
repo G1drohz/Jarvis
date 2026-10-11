@@ -1,3 +1,3 @@
-from .base import AIProvider, get_provider
+from .base import AIProvider, get_provider, PROVIDERS
 
-__all__ = ["AIProvider", "get_provider"]
+__all__ = ["AIProvider", "get_provider", "PROVIDERS"]

@@ -1,45 +1,68 @@
 app:
   name: JARVIS
-  version: "0.1.1"
+  version: "0.2.0"
   debug: true
+  language: ru          # ru | en
 
 ai:
-  provider: openai   # openai | stub
+  provider: stub        # stub | openai | gemini | claude | grok | deepseek | ollama
   model: gpt-4o-mini
   temperature: 0.7
   max_tokens: 1024
+  # Keys via env: OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY,
+  #               XAI_API_KEY, DEEPSEEK_API_KEY
+  ollama_base: http://127.0.0.1:11434
+  ollama_model: llama3.2
 
 memory:
   path: data/jarvis_memory.db
 
 ui:
   theme: dark
-  window_width: 1100
-  window_height: 720
+  window_width: 1200
+  window_height: 780
+  hud_enabled: true
 
 permissions:
   allow_system_commands: false
   allow_file_access: true
   allow_network: true
+  require_confirm_for:
+    - shutdown
+    - restart
+    - delete_file
+    - run_shell
 
 stt:
   enabled: true
-  engine: google          # google | sphinx | whisper (future)
-  language: ru-RU         # ru-RU | en-US
-  phrase_time_limit: 8    # max seconds to listen per phrase
-  ambient_duration: 0.5   # seconds to adjust for ambient noise
+  engine: auto          # auto | google | vosk | sphinx
+  language: ru-RU
+  phrase_time_limit: 8
+  ambient_duration: 0.5
+  vosk_model_path: ""   # path to vosk model dir if offline
 
 tts:
   enabled: true
-  engine: pyttsx3         # pyttsx3 | stub
-  voice: auto             # auto | jarvis | male | female (matched by name keywords)
+  engine: pyttsx3
+  voice: auto
   rate: 175
   volume: 0.9
 
 voice:
-  speak_replies: true     # озвучивать ответы ассистента
-  wake_word: "джарвис"    # заготовка для continuous mode
-  continuous: false       # непрерывное прослушивание (пока off)
+  speak_replies: true
+  wake_word: "джарвис"
+  wake_word_en: "jarvis"
+  continuous: true
+  wake_cooldown_sec: 1.5
 
 vision:
-  enabled: false
+  enabled: true
+
+plugins:
+  auto_load: true
+  dirs:
+    - jarvis/plugins
+    - data/plugins
+
+commands:
+  store_path: data/commands.json
