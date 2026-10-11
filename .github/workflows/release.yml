@@ -39,62 +39,65 @@ jobs:
       - name: Pack portable ZIP
         shell: pwsh
         run: |
-          $ver = "0.2.2"
-          $out = "dist/JARVIS-Portable-$ver.zip"
+          $ver = "0.3.0"
           if (-not (Test-Path "dist/JARVIS")) { throw "dist/JARVIS missing" }
-          Compress-Archive -Path "dist/JARVIS/*" -DestinationPath $out -Force
+          Compress-Archive -Path "dist/JARVIS/*" -DestinationPath "dist/JARVIS-Portable-$ver.zip" -Force
 
-      - name: Pack Setup ZIP (auto Python + deps)
+      - name: Install Inno Setup
         shell: pwsh
         run: |
-          $ver = "0.2.2"
-          $stage = "$env:TEMP\jarvis-setup-stage"
-          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
-          New-Item -ItemType Directory -Path $stage | Out-Null
-          Copy-Item packaging/setup.bat $stage
-          Copy-Item packaging/setup.ps1 $stage
-          Copy-Item packaging/README-SETUP.txt $stage
-          Compress-Archive -Path "$stage\*" -DestinationPath "dist/JARVIS-Setup-$ver.zip" -Force
+          choco install innosetup -y --no-progress
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) {
+            throw "ISCC.exe not found"
+          }
+
+      - name: Compile Setup.exe
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\installer | Out-Null
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\installer.iss
+          Get-ChildItem dist\installer
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: JARVIS-Windows
           path: |
-            dist/JARVIS-Portable-0.2.2.zip
-            dist/JARVIS-Setup-0.2.2.zip
+            dist/JARVIS-Portable-0.3.0.zip
+            dist/installer/JARVIS-Setup-0.3.0.exe
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.2.2
-          name: JARVIS v0.2.2
+          tag_name: v0.3.0
+          name: JARVIS v0.3.0
           body: |
-            ## JARVIS v0.2.2 — Windows
+            ## JARVIS v0.3.0
 
-            ### Рекомендуется: установщик с авто-Python
+            ### ⭐ Установщик .exe (рекомендуется)
 
-            1. Скачай **[JARVIS-Setup-0.2.2.zip](https://github.com/G1drohz/Jarvis/releases/download/v0.2.2/JARVIS-Setup-0.2.2.zip)**
-            2. Распакуй
-            3. Запусти **setup.bat**
+            Скачай **[JARVIS-Setup-0.3.0.exe](https://github.com/G1drohz/Jarvis/releases/download/v0.3.0/JARVIS-Setup-0.3.0.exe)** и запусти.
 
-            Установщик сам:
-            - найдёт или установит **Python 3.11**
-            - скачает JARVIS
-            - поставит зависимости (в т.ч. микрофон, если возможно)
-            - создаст ярлыки на рабочем столе и в меню Пуск
+            - **Python не нужен** — ни для установщика, ни для приложения
+            - Все зависимости уже внутри
+            - Ярлыки, меню Пуск, опциональный автозапуск
 
-            ### Portable (без установки Python)
+            ### Portable ZIP
 
-            1. Скачай **[JARVIS-Portable-0.2.2.zip](https://github.com/G1drohz/Jarvis/releases/download/v0.2.2/JARVIS-Portable-0.2.2.zip)**
-            2. Распакуй → **JARVIS.exe**
+            **[JARVIS-Portable-0.3.0.zip](https://github.com/G1drohz/Jarvis/releases/download/v0.3.0/JARVIS-Portable-0.3.0.zip)** → распакуй → `JARVIS.exe`
 
-            ### Примечания
-            - SmartScreen: «Подробнее» → «Выполнить в любом случае»
-            - Удаление (Setup): `%LOCALAPPDATA%\Programs\JARVIS\uninstall.bat`
+            ### Голос Джарвиса
+
+            Нейросеть **edge-tts** (Microsoft):
+            - RU: `ru-RU-DmitryNeural`
+            - EN: `en-GB-RyanNeural` (британский мужской, стиль butler/AI)
+
+            Офлайн-запас: системный SAPI (pyttsx3).
+
+            Для озвучки нужен интернет (edge-tts). Без сети — системный голос.
           files: |
-            dist/JARVIS-Portable-0.2.2.zip
-            dist/JARVIS-Setup-0.2.2.zip
+            dist/JARVIS-Portable-0.3.0.zip
+            dist/installer/JARVIS-Setup-0.3.0.exe
           draft: false
           make_latest: true
         env:

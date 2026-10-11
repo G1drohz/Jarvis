@@ -1,21 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for JARVIS
-# Build: pyinstaller packaging/jarvis.spec
 
-import sys
 from pathlib import Path
 
 block_cipher = None
-root = Path(SPECPATH).parent  # packaging/
-project = root.parent if root.name == "packaging" else root
 
-# When SPECPATH is packaging/, parent is project root
-if Path(SPECPATH).name == "packaging":
-    project = Path(SPECPATH).parent
-else:
-    project = Path(SPECPATH).parent.parent if (Path(SPECPATH).parent / "jarvis").exists() is False else Path(SPECPATH).parent
-
-# Robust project root detection
 _here = Path(SPECPATH).resolve()
 if (_here.parent / "jarvis").is_dir():
     project = _here.parent
@@ -45,6 +34,8 @@ a = Analysis(
         "pyttsx3",
         "pyttsx3.drivers",
         "pyttsx3.drivers.sapi5",
+        "edge_tts",
+        "pygame",
         "psutil",
         "PIL",
         "PIL.ImageGrab",
@@ -71,7 +62,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # GUI app — no black console
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

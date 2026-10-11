@@ -35,7 +35,9 @@ class VoiceController:
         else:
             parts.append(f"STT: {self.stt.error or 'off'}")
         if self.tts_ok:
-            parts.append("TTS: OK")
+            backend = getattr(self.tts, "backend", "ok")
+            voice = settings.tts.voice
+            parts.append(f"TTS: {backend} ({voice})")
         else:
             parts.append(f"TTS: {self.tts.error or 'off'}")
         wake = settings.voice.wake_word

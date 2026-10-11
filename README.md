@@ -1,25 +1,22 @@
-# JARVIS v0.2.2
+# JARVIS v0.3.0
 
-Локальный AI-ассистент для Windows в стиле **Luxify Assistant**.
+Локальный AI-ассистент для Windows в стиле Luxify / Iron Man.
 
 ## Скачать
 
 **https://github.com/G1drohz/Jarvis/releases/latest**
 
-| Файл | Что делает |
-|------|------------|
-| **JARVIS-Setup-0.2.2.zip** | Установщик: сам ставит Python + зависимости + ярлыки |
-| **JARVIS-Portable-0.2.2.zip** | Готовый `JARVIS.exe` без Python |
+| Файл | Описание |
+|------|----------|
+| **JARVIS-Setup-0.3.0.exe** | Настоящий установщик. Python **не нужен** |
+| **JARVIS-Portable-0.3.0.zip** | Распакуй и запусти `JARVIS.exe` |
 
-### Установка (Setup)
+### Голос
 
-1. Скачай `JARVIS-Setup-*.zip`
-2. Распакуй
-3. Запусти **`setup.bat`**
-4. Ярлык **JARVIS** появится на рабочем столе
+Да — JARVIS **говорит** нейросетевым голосом (edge-tts):
+- 🇷🇺 `ru-RU-DmitryNeural`
+- 🇬🇧 `en-GB-RyanNeural` (британский мужской, стиль butler)
 
-### Portable
-
-Распакуй → `JARVIS.exe`.
+Нужен интернет для нейро-голоса; без сети — системный SAPI.
 
 MIT
