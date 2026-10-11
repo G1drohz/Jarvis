@@ -1,16 +1,14 @@
 app:
   name: JARVIS
-  version: "0.2.0"
-  debug: true
-  language: ru          # ru | en
+  version: "0.2.1"
+  debug: false
+  language: ru
 
 ai:
-  provider: stub        # stub | openai | gemini | claude | grok | deepseek | ollama
+  provider: stub
   model: gpt-4o-mini
   temperature: 0.7
   max_tokens: 1024
-  # Keys via env: OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY,
-  #               XAI_API_KEY, DEEPSEEK_API_KEY
   ollama_base: http://127.0.0.1:11434
   ollama_model: llama3.2
 
@@ -22,6 +20,7 @@ ui:
   window_width: 1200
   window_height: 780
   hud_enabled: true
+  start_in_tray: false
 
 permissions:
   allow_system_commands: false
@@ -35,11 +34,11 @@ permissions:
 
 stt:
   enabled: true
-  engine: auto          # auto | google | vosk | sphinx
+  engine: auto
   language: ru-RU
   phrase_time_limit: 8
   ambient_duration: 0.5
-  vosk_model_path: ""   # path to vosk model dir if offline
+  vosk_model_path: ""
 
 tts:
   enabled: true
@@ -52,7 +51,7 @@ voice:
   speak_replies: true
   wake_word: "джарвис"
   wake_word_en: "jarvis"
-  continuous: true
+  continuous: false
   wake_cooldown_sec: 1.5
 
 vision:

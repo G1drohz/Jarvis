@@ -1,19 +1,37 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
 
-ROOT = Path(__file__).resolve().parent.parent
+
+def _root() -> Path:
+    env = os.environ.get("JARVIS_ROOT")
+    if env:
+        return Path(env)
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+ROOT = _root()
 CONFIG_PATH = ROOT / "config" / "default.yaml"
+if not CONFIG_PATH.exists():
+    # bundled config next to exe or in _MEIPASS
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        alt = Path(meipass) / "config" / "default.yaml"
+        if alt.exists():
+            CONFIG_PATH = alt
 
 
 class AppSettings(BaseModel):
     name: str = "JARVIS"
-    version: str = "0.2.0"
+    version: str = "0.2.1"
     debug: bool = True
     language: str = "ru"
 
@@ -37,6 +55,7 @@ class UISettings(BaseModel):
     window_width: int = 1200
     window_height: int = 780
     hud_enabled: bool = True
+    start_in_tray: bool = False
 
 
 class PermissionsSettings(BaseModel):
@@ -118,8 +137,6 @@ def load_settings(path: Path | None = None) -> Settings:
 
     ai = data.setdefault("ai", {})
     provider = (ai.get("provider") or "stub").lower()
-
-    # Generic OPENAI_API_KEY still works for openai-compatible
     for prov, env_name in _ENV_KEY_MAP.items():
         key = os.getenv(env_name)
         if key and provider == prov:
