@@ -13,11 +13,9 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -27,78 +25,60 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller pillow pyautogui
           pip install pipwin
-          pipwin install pyaudio || pip install pyaudio || echo "PyAudio optional"
+          pipwin install pyaudio || pip install pyaudio || echo optional
 
       - name: Generate icon
         run: python packaging/make_icon.py
         continue-on-error: true
 
-      - name: Build with PyInstaller
+      - name: Build PyInstaller
         run: python -m PyInstaller packaging/jarvis.spec --noconfirm --clean
 
       - name: Pack portable ZIP
         shell: pwsh
         run: |
-          $ver = "0.3.0"
-          if (-not (Test-Path "dist/JARVIS")) { throw "dist/JARVIS missing" }
-          Compress-Archive -Path "dist/JARVIS/*" -DestinationPath "dist/JARVIS-Portable-$ver.zip" -Force
+          Compress-Archive -Path "dist/JARVIS/*" -DestinationPath "dist/JARVIS-Portable-0.3.1.zip" -Force
 
       - name: Install Inno Setup
-        shell: pwsh
-        run: |
-          choco install innosetup -y --no-progress
-          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) {
-            throw "ISCC.exe not found"
-          }
+        run: choco install innosetup -y --no-progress
 
       - name: Compile Setup.exe
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist\installer | Out-Null
+          (Get-Content packaging\installer.iss) -replace '0\.2\.1','0.3.1' -replace '0\.3\.0','0.3.1' | Set-Content packaging\installer.iss
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\installer.iss
-          Get-ChildItem dist\installer
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: JARVIS-Windows
           path: |
-            dist/JARVIS-Portable-0.3.0.zip
-            dist/installer/JARVIS-Setup-0.3.0.exe
+            dist/JARVIS-Portable-0.3.1.zip
+            dist/installer/JARVIS-Setup-*.exe
 
-      - name: Create GitHub Release
+      - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.3.0
-          name: JARVIS v0.3.0
+          tag_name: v0.3.1
+          name: JARVIS v0.3.1 — offline Jarvis voice
           body: |
-            ## JARVIS v0.3.0
+            ## Голос офлайн (ближе к киношному)
 
-            ### ⭐ Установщик .exe (рекомендуется)
+            - **Piper** neural TTS без интернета после первой загрузки модели
+            - EN: `en_GB-alan-medium` — британский мужской
+            - RU: `ru_RU-dmitri-medium` — мужской neural
 
-            Скачай **[JARVIS-Setup-0.3.0.exe](https://github.com/G1drohz/Jarvis/releases/download/v0.3.0/JARVIS-Setup-0.3.0.exe)** и запусти.
+            Модели (~60 МБ) качаются один раз в `data/tts_models/`.
 
-            - **Python не нужен** — ни для установщика, ни для приложения
-            - Все зависимости уже внутри
-            - Ярлыки, меню Пуск, опциональный автозапуск
+            ### Скачать
+            - **JARVIS-Setup-0.3.1.exe** — установщик (Python не нужен)
+            - **JARVIS-Portable-0.3.1.zip** — portable
 
-            ### Portable ZIP
-
-            **[JARVIS-Portable-0.3.0.zip](https://github.com/G1drohz/Jarvis/releases/download/v0.3.0/JARVIS-Portable-0.3.0.zip)** → распакуй → `JARVIS.exe`
-
-            ### Голос Джарвиса
-
-            Нейросеть **edge-tts** (Microsoft):
-            - RU: `ru-RU-DmitryNeural`
-            - EN: `en-GB-RyanNeural` (британский мужской, стиль butler/AI)
-
-            Офлайн-запас: системный SAPI (pyttsx3).
-
-            Для озвучки нужен интернет (edge-tts). Без сети — системный голос.
+            > Не является голосом актёра из MCU (права Disney/Marvel).
           files: |
-            dist/JARVIS-Portable-0.3.0.zip
-            dist/installer/JARVIS-Setup-0.3.0.exe
-          draft: false
+            dist/JARVIS-Portable-0.3.1.zip
+            dist/installer/JARVIS-Setup-*.exe
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
