@@ -6,3 +6,9 @@ pydantic>=2.5.0
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
 python-dotenv>=1.0.0
+SpeechRecognition>=3.10.0
+pyttsx3>=2.90
+# PyAudio is required for microphone access.
+# Windows: pip install pipwin && pipwin install pyaudio
+# or download a wheel from https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio
+PyAudio>=0.2.14; platform_system!="Windows"

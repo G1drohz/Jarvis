@@ -13,7 +13,7 @@ CONFIG_PATH = ROOT / "config" / "default.yaml"
 
 class AppSettings(BaseModel):
     name: str = "JARVIS"
-    version: str = "0.1.0"
+    version: str = "0.1.1"
     debug: bool = True
 
 
@@ -31,8 +31,8 @@ class MemorySettings(BaseModel):
 
 class UISettings(BaseModel):
     theme: str = "dark"
-    window_width: int = 900
-    window_height: int = 650
+    window_width: int = 1100
+    window_height: int = 720
 
 
 class PermissionsSettings(BaseModel):
@@ -42,14 +42,25 @@ class PermissionsSettings(BaseModel):
 
 
 class STTSettings(BaseModel):
-    enabled: bool = False
-    engine: str = "stub"
+    enabled: bool = True
+    engine: str = "google"
+    language: str = "ru-RU"
+    phrase_time_limit: int = 8
+    ambient_duration: float = 0.5
 
 
 class TTSSettings(BaseModel):
-    enabled: bool = False
-    engine: str = "stub"
-    voice: str = "jarvis"
+    enabled: bool = True
+    engine: str = "pyttsx3"
+    voice: str = "auto"
+    rate: int = 175
+    volume: float = 0.9
+
+
+class VoiceSettings(BaseModel):
+    speak_replies: bool = True
+    wake_word: str = "джарвис"
+    continuous: bool = False
 
 
 class VisionSettings(BaseModel):
@@ -64,6 +75,7 @@ class Settings(BaseModel):
     permissions: PermissionsSettings = Field(default_factory=PermissionsSettings)
     stt: STTSettings = Field(default_factory=STTSettings)
     tts: TTSSettings = Field(default_factory=TTSSettings)
+    voice: VoiceSettings = Field(default_factory=VoiceSettings)
     vision: VisionSettings = Field(default_factory=VisionSettings)
 
 
@@ -74,7 +86,6 @@ def load_settings(path: Path | None = None) -> Settings:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
-    # env overrides
     api_key = os.getenv("OPENAI_API_KEY")
     if api_key:
         data.setdefault("ai", {})["api_key"] = api_key

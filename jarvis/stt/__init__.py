@@ -1,3 +1,3 @@
-from .stub import STTEngine
+from .engine import STTEngine, create_stt
 
-__all__ = ["STTEngine"]
+__all__ = ["STTEngine", "create_stt"]

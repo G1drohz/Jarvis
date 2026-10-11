@@ -21,6 +21,7 @@ class Agent:
         self.commands = CommandRegistry()
         self.ai = get_provider(settings.ai)
         self._history: list[dict[str, str]] = []
+        self.voice = None  # set by UI / main after construction
 
     def process(self, user_input: str) -> str:
         """Process a single user message and return assistant reply."""
@@ -49,10 +50,10 @@ class Agent:
     def _build_messages(self) -> list[dict[str, str]]:
         system = (
             f"You are {self.settings.app.name}, a helpful local AI assistant. "
-            "Be concise, practical and friendly. You run on the user's machine."
+            "Be concise, practical and friendly. You run on the user's machine. "
+            "You can be controlled by voice."
         )
         messages = [{"role": "system", "content": system}]
-        # last N turns from memory
         recent = self.memory.get_recent(20)
         messages.extend(recent)
         return messages

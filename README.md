@@ -1,8 +1,8 @@
 # JARVIS
 
-Локальный персональный AI-ассистент (**v0.1**).
+Локальный персональный AI-ассистент (**v0.1.1**).
 
-Интерфейс в стиле **Luxify Assistant**: боковое меню, Home с историей и панелью управления, разделы Commands / AI / Settings, тёмная тема.
+Интерфейс в стиле **Luxify Assistant** + **голосовое управление** (STT + TTS).
 
 ## Быстрый старт
 
@@ -11,25 +11,29 @@ git clone https://github.com/G1drohz/Jarvis.git
 cd Jarvis
 
 python -m venv .venv
-# Windows
-.venv\\Scripts\\activate
-# Linux/macOS
-source .venv/bin/activate
+.venv\\Scripts\\activate          # Windows
 
 pip install -r requirements.txt
+
+# Микрофон (Windows):
+pip install pipwin
+pipwin install pyaudio
+
 python -m jarvis.main
 ```
 
-## Что внутри
+Нажми **🎤** на Home и говори.
 
-| Раздел UI | Содержимое |
-|-----------|------------|
-| **Home** | Чат, история команд, mic-кнопка, control panel (prefix / silent / avatar / always on top / volume) |
-| **Commands** | Коллекции + черновик редактора команд (+ «Создать с AI») |
-| **JARVIS AI** | Отдельный чат с выбором модели |
-| **Settings** | Тема, язык, AI-провайдер, права, голос |
+## Возможности
 
-Под капотом: ядро агента, AI-абстракция (stub / OpenAI), команды, плагины, Windows-tools, SQLite-память, permissions, STT/TTS/Vision stubs, тесты, CI.
+| Раздел | Содержимое |
+|--------|------------|
+| **Home** | Чат, история, mic, озвучка ответов, always on top |
+| **Commands** | Коллекции + черновик редактора |
+| **JARVIS AI** | Отдельный чат с моделью |
+| **Settings** | Статус STT/TTS, AI, права |
+
+**Голос:** Google STT (`ru-RU`) + pyttsx3 TTS. Подробнее — [docs/voice.md](docs/voice.md).
 
 ## OpenAI (опционально)
 
@@ -37,36 +41,12 @@ python -m jarvis.main
 set OPENAI_API_KEY=sk-...
 ```
 
-В `config/default.yaml`:
-
-```yaml
-ai:
-  provider: openai
-```
-
-## Структура
-
-```
-jarvis/
-├── core/          # агент
-├── ai/            # провайдеры
-├── commands/      # команды
-├── plugins/
-├── tools/windows/
-├── memory/        # SQLite
-├── permissions/
-├── ui/            # Luxify-style UI
-├── stt/ tts/ vision/   # stubs
-```
+В `config/default.yaml`: `ai.provider: openai`.
 
 ## Тесты
 
 ```bash
 pytest
 ```
-
-## Дальше
-
-Голос (wake word + STT/TTS), реальный редактор команд, HUD, Vision, управление Windows, Discord/Steam/GitHub.
 
 MIT

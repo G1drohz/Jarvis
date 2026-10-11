@@ -1,6 +1,6 @@
 app:
   name: JARVIS
-  version: "0.1.0"
+  version: "0.1.1"
   debug: true
 
 ai:
@@ -14,8 +14,8 @@ memory:
 
 ui:
   theme: dark
-  window_width: 900
-  window_height: 650
+  window_width: 1100
+  window_height: 720
 
 permissions:
   allow_system_commands: false
@@ -23,13 +23,23 @@ permissions:
   allow_network: true
 
 stt:
-  enabled: false
-  engine: stub
+  enabled: true
+  engine: google          # google | sphinx | whisper (future)
+  language: ru-RU         # ru-RU | en-US
+  phrase_time_limit: 8    # max seconds to listen per phrase
+  ambient_duration: 0.5   # seconds to adjust for ambient noise
 
 tts:
-  enabled: false
-  engine: stub
-  voice: jarvis
+  enabled: true
+  engine: pyttsx3         # pyttsx3 | stub
+  voice: auto             # auto | jarvis | male | female (matched by name keywords)
+  rate: 175
+  volume: 0.9
+
+voice:
+  speak_replies: true     # озвучивать ответы ассистента
+  wake_word: "джарвис"    # заготовка для continuous mode
+  continuous: false       # непрерывное прослушивание (пока off)
 
 vision:
   enabled: false
