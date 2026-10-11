@@ -1,52 +1,63 @@
 # JARVIS
 
-Локальный персональный AI-ассистент (стартовая версия **v0.1**).
+Локальный персональный AI-ассистент (**v0.1**).
 
-Рабочий фундамент: ядро агента, AI-абстракция, система команд, плагины, Windows-инструменты, SQLite-память, permissions, PySide6 UI, заготовки STT/TTS/Vision, тесты и CI.
-
-> Это **не** финальная версия. Дальше можно наращивать: нормальный AI, голос «Джарвис», wake word, сценарии, HUD, Vision, браузер, Discord/Steam/GitHub и полноценное управление Windows.
+Интерфейс в стиле **Luxify Assistant**: боковое меню, Home с историей и панелью управления, разделы Commands / AI / Settings, тёмная тема.
 
 ## Быстрый старт
 
 ```bash
-# Клонируй
 git clone https://github.com/G1drohz/Jarvis.git
 cd Jarvis
 
-# Виртуальное окружение
 python -m venv .venv
 # Windows
 .venv\\Scripts\\activate
 # Linux/macOS
 source .venv/bin/activate
 
-# Зависимости
 pip install -r requirements.txt
-
-# Запуск
 python -m jarvis.main
+```
+
+## Что внутри
+
+| Раздел UI | Содержимое |
+|-----------|------------|
+| **Home** | Чат, история команд, mic-кнопка, control panel (prefix / silent / avatar / always on top / volume) |
+| **Commands** | Коллекции + черновик редактора команд (+ «Создать с AI») |
+| **JARVIS AI** | Отдельный чат с выбором модели |
+| **Settings** | Тема, язык, AI-провайдер, права, голос |
+
+Под капотом: ядро агента, AI-абстракция (stub / OpenAI), команды, плагины, Windows-tools, SQLite-память, permissions, STT/TTS/Vision stubs, тесты, CI.
+
+## OpenAI (опционально)
+
+```bash
+set OPENAI_API_KEY=sk-...
+```
+
+В `config/default.yaml`:
+
+```yaml
+ai:
+  provider: openai
 ```
 
 ## Структура
 
 ```
 jarvis/
-├── core/          # ядро агента и главный цикл
-├── ai/            # абстракция AI-провайдеров
-├── commands/      # система команд
-├── plugins/       # плагины
-├── tools/windows/ # Windows-инструменты
-├── memory/        # SQLite-память
-├── permissions/   # права доступа
-├── ui/            # PySide6 интерфейс
-├── stt/           # Speech-to-Text (заготовка)
-├── tts/           # Text-to-Speech (заготовка)
-└── vision/        # Vision (заготовка)
+├── core/          # агент
+├── ai/            # провайдеры
+├── commands/      # команды
+├── plugins/
+├── tools/windows/
+├── memory/        # SQLite
+├── permissions/
+├── ui/            # Luxify-style UI
+├── stt/ tts/ vision/   # stubs
 ```
-
-## Конфигурация
-
-Смотри `config/default.yaml` и `config/settings.py`.
 
 ## Тесты
 
@@ -54,6 +65,8 @@ jarvis/
 pytest
 ```
 
-## Лицензия
+## Дальше
+
+Голос (wake word + STT/TTS), реальный редактор команд, HUD, Vision, управление Windows, Discord/Steam/GitHub.
 
 MIT
