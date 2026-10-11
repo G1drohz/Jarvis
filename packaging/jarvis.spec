@@ -5,22 +5,26 @@ block_cipher = None
 _here = Path(SPECPATH).resolve()
 project = _here.parent if (_here.parent / "jarvis").is_dir() else _here
 
+ui_cache = project / "jarvis" / "ui" / "_main_window_cache.py"
+datas = [
+    (str(project / "config" / "default.yaml"), "config"),
+    (str(project / "data" / "commands.json"), "data"),
+    (str(project / "jarvis" / "plugins"), "jarvis/plugins"),
+]
+if ui_cache.exists():
+    datas.append((str(ui_cache), "jarvis/ui"))
+
 a = Analysis(
     [str(project / "jarvis" / "main.py")],
     pathex=[str(project)],
     binaries=[],
-    datas=[
-        (str(project / "config" / "default.yaml"), "config"),
-        (str(project / "data" / "commands.json"), "data"),
-        (str(project / "jarvis" / "plugins"), "jarvis/plugins"),
-    ],
+    datas=datas,
     hiddenimports=[
         "PySide6", "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
         "yaml", "pydantic", "httpx",
         "speech_recognition",
         "pyttsx3", "pyttsx3.drivers", "pyttsx3.drivers.sapi5",
-        "edge_tts", "pygame",
-        "piper", "onnxruntime",
+        "edge_tts", "pygame", "piper", "onnxruntime",
         "psutil", "PIL", "PIL.ImageGrab",
     ],
     excludes=["tkinter", "matplotlib"],

@@ -19,6 +19,18 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Embed UI source (offline, no runtime download)
+        shell: pwsh
+        run: |
+          $url = "https://raw.githubusercontent.com/G1drohz/Jarvis/ec6a002c20403a5e7fe429c13f04b46266f4c963/jarvis/ui/main_window.py"
+          $out = "jarvis/ui/_main_window_cache.py"
+          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+          $text = Get-Content $out -Raw
+          $idx = $text.LastIndexOf("def run_ui")
+          if ($idx -gt 0) { $text = $text.Substring(0, $idx).TrimEnd() + "`n" }
+          Set-Content -Path $out -Value $text -Encoding UTF8
+          Write-Host "UI cache size:" (Get-Item $out).Length
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -34,10 +46,16 @@ jobs:
       - name: Build PyInstaller
         run: python -m PyInstaller packaging/jarvis.spec --noconfirm --clean
 
+      - name: Ensure UI cache inside dist
+        shell: pwsh
+        run: |
+          Copy-Item -Force jarvis/ui/_main_window_cache.py dist/JARVIS/ -ErrorAction SilentlyContinue
+          Get-ChildItem dist/JARVIS -Filter "*window*" -Recurse | Select-Object FullName
+
       - name: Pack portable ZIP
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist/JARVIS/*" -DestinationPath "dist/JARVIS-Portable-0.3.1.zip" -Force
+          Compress-Archive -Path "dist/JARVIS/*" -DestinationPath "dist/JARVIS-Portable-0.3.2.zip" -Force
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
@@ -46,38 +64,36 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist\installer | Out-Null
-          (Get-Content packaging\installer.iss) -replace '0\.2\.1','0.3.1' -replace '0\.3\.0','0.3.1' | Set-Content packaging\installer.iss
+          (Get-Content packaging\installer.iss) -replace '0\.3\.1','0.3.2' -replace '0\.3\.0','0.3.2' | Set-Content packaging\installer.iss
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\installer.iss
+          Get-ChildItem dist\installer
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: JARVIS-Windows
           path: |
-            dist/JARVIS-Portable-0.3.1.zip
+            dist/JARVIS-Portable-0.3.2.zip
             dist/installer/JARVIS-Setup-*.exe
 
-      - name: Release
+      - name: Release v0.3.2
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.3.1
-          name: JARVIS v0.3.1 — offline Jarvis voice
+          tag_name: v0.3.2
+          name: JARVIS v0.3.2 — UI crash fix
           body: |
-            ## Голос офлайн (ближе к киношному)
+            ## Исправление краша `NameError: free variable e`
 
-            - **Piper** neural TTS без интернета после первой загрузки модели
-            - EN: `en_GB-alan-medium` — британский мужской
-            - RU: `ru_RU-dmitri-medium` — мужской neural
-
-            Модели (~60 МБ) качаются один раз в `data/tts_models/`.
+            - UI вшит в установщик (не нужен интернет при старте)
+            - Исправлен баг с переменной исключения
 
             ### Скачать
-            - **JARVIS-Setup-0.3.1.exe** — установщик (Python не нужен)
-            - **JARVIS-Portable-0.3.1.zip** — portable
+            - **JARVIS-Setup-0.3.2.exe**
+            - **JARVIS-Portable-0.3.2.zip**
 
-            > Не является голосом актёра из MCU (права Disney/Marvel).
+            Удали старую установку и поставь эту версию.
           files: |
-            dist/JARVIS-Portable-0.3.1.zip
+            dist/JARVIS-Portable-0.3.2.zip
             dist/installer/JARVIS-Setup-*.exe
           make_latest: true
         env:

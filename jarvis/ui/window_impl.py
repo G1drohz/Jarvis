@@ -1,9 +1,10 @@
-"""MainWindow loader — offline first, network fallback, no free-var bugs."""
+"""MainWindow — load from embedded cache only (no free-var bugs)."""
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
+# Packed next to this file by CI / first-run download
 _CACHE = Path(__file__).with_name("_main_window_cache.py")
 _RAW_URL = (
     "https://raw.githubusercontent.com/G1drohz/Jarvis/"
@@ -11,58 +12,47 @@ _RAW_URL = (
 )
 
 
-def _exec_source(code: str, label: str):
-    ns = {"__name__": "jarvis.ui.window_impl"}
-    exec(compile(code, label, "exec"), ns)
-    return ns["MainWindow"]
-
-
-def _from_cache_or_network() -> type:
-    if _CACHE.exists():
-        return _exec_source(_CACHE.read_text(encoding="utf-8"), str(_CACHE))
-
-    import urllib.request
-
-    with urllib.request.urlopen(_RAW_URL, timeout=30) as r:
-        text = r.read().decode("utf-8")
-    if "def run_ui" in text:
-        text = text[: text.rfind("def run_ui")].rstrip() + "\n"
+def _prepare_cache() -> Path:
+    if _CACHE.exists() and _CACHE.stat().st_size > 1000:
+        return _CACHE
+    # Try download once (dev / first portable run)
     try:
+        import urllib.request
+
+        with urllib.request.urlopen(_RAW_URL, timeout=45) as r:
+            text = r.read().decode("utf-8")
+        if "def run_ui" in text:
+            text = text[: text.rfind("def run_ui")].rstrip() + "\n"
         _CACHE.write_text(text, encoding="utf-8")
-    except OSError:
-        pass
-    return _exec_source(text, "main_window_remote")
+    except Exception as ex:
+        raise RuntimeError(
+            f"UI module missing and download failed: {ex}. "
+            "Reinstall JARVIS-Setup from GitHub Releases."
+        ) from ex
+    return _CACHE
 
 
 def _load():
-    errors: list[str] = []
-
-    # 1) Local compressed / plain body module
+    err_msg = "unknown"
     try:
-        from jarvis.ui import _main_window_body
-
-        return _main_window_body.MainWindow
+        path = _prepare_cache()
+        code = path.read_text(encoding="utf-8")
+        ns = {"__name__": "jarvis.ui.window_impl"}
+        exec(compile(code, str(path), "exec"), ns)
+        return ns["MainWindow"]
     except Exception as e:
-        errors.append(f"body: {e}")
+        err_msg = str(e)
+        print("window_impl load failed:", err_msg, file=sys.stderr)
 
-    # 2) Cache or download last known-good UI
-    try:
-        return _from_cache_or_network()
-    except Exception as e:
-        errors.append(f"cache/net: {e}")
-
-    err_msg = " | ".join(errors)
-    print("window_impl load failed:", err_msg, file=sys.stderr)
-
-    from PySide6.QtWidgets import QMainWindow, QLabel
+    from PySide6.QtWidgets import QLabel, QMainWindow
 
     class MainWindow(QMainWindow):
         def __init__(self, agent):
             super().__init__()
             self.agent = agent
-            msg = err_msg  # bind to local, never free var from except
+            msg = err_msg  # local bind — never use exception var e here
 
-            class _Voice:
+            class _V:
                 stt_ok = False
                 tts_ok = False
                 speak_replies = False
@@ -78,9 +68,9 @@ def _load():
                 def status_message(self):
                     return msg
 
-            self.voice = _Voice()
+            self.voice = _V()
 
-            class _Hud:
+            class _H:
                 def close(self):
                     return None
 
@@ -93,7 +83,7 @@ def _load():
                 def set_status(self, t):
                     return None
 
-            self.hud = _Hud()
+            self.hud = _H()
             self._wake_worker = type("W", (), {})()
             self._wake_thread = type(
                 "T", (), {"quit": lambda s: None, "wait": lambda s, x=0: None}
@@ -102,12 +92,13 @@ def _load():
                 "T", (), {"quit": lambda s: None, "wait": lambda s, x=0: None}
             )()
             self.setWindowTitle("JARVIS")
+            self.resize(640, 200)
             self.setCentralWidget(
                 QLabel(
-                    "UI failed to load:\n"
+                    "Не удалось загрузить интерфейс:\n"
                     + msg
-                    + "\n\nDownload latest from:\n"
-                    "https://github.com/G1drohz/Jarvis/releases"
+                    + "\n\nСкачай заново:\n"
+                    "https://github.com/G1drohz/Jarvis/releases/latest"
                 )
             )
 

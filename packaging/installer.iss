@@ -1,5 +1,5 @@
 #define MyAppName "JARVIS"
-#define MyAppVersion "0.3.1"
+#define MyAppVersion "0.3.2"
 #define MyAppPublisher "JARVIS"
 #define MyAppURL "https://github.com/G1drohz/Jarvis"
 #define MyAppExeName "JARVIS.exe"
