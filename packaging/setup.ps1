@@ -2,14 +2,11 @@
 <#
 .SYNOPSIS
   JARVIS installer — installs Python (if needed), dependencies, and creates shortcuts.
-.DESCRIPTION
-  Double-click setup.bat or run:
-    powershell -ExecutionPolicy Bypass -File setup.ps1
 #>
 
 $ErrorActionPreference = "Stop"
 $AppName = "JARVIS"
-$AppVersion = "0.2.1"
+$AppVersion = "0.2.2"
 $RepoZip = "https://github.com/G1drohz/Jarvis/archive/refs/heads/main.zip"
 $InstallRoot = Join-Path $env:LOCALAPPDATA "Programs\$AppName"
 $PythonMin = [version]"3.10.0"
@@ -19,15 +16,8 @@ function Write-Step($msg) {
   Write-Host ""
   Write-Host "==> $msg" -ForegroundColor Cyan
 }
-
 function Write-Ok($msg) { Write-Host "  OK: $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "  ! $msg" -ForegroundColor Yellow }
-
-function Test-Admin {
-  $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-  $p = New-Object Security.Principal.WindowsPrincipal($id)
-  return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-}
 
 function Find-Python {
   $candidates = @()
@@ -37,7 +27,6 @@ function Find-Python {
       if ($p) { $candidates += $p.Source }
     } catch {}
   }
-  # Common install paths
   $paths = @(
     "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
     "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
@@ -65,13 +54,14 @@ function Find-Python {
 function Install-Python {
   Write-Step "Installing Python $PythonPreferred..."
 
-  # 1) winget (preferred, no admin often)
   $winget = Get-Command winget -ErrorAction SilentlyContinue
   if ($winget) {
     Write-Host "  Using winget..."
     try {
       & winget install -e --id Python.Python.3.11 --accept-package-agreements --accept-source-agreements --scope user
       Start-Sleep -Seconds 3
+      $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
+                  [System.Environment]::GetEnvironmentVariable("Path", "User")
       $found = Find-Python
       if ($found) { Write-Ok "Python $($found.Version)"; return $found }
     } catch {
@@ -79,7 +69,6 @@ function Install-Python {
     }
   }
 
-  # 2) Official installer silent (user scope)
   Write-Host "  Downloading official Python installer..."
   $installer = Join-Path $env:TEMP "python-3.11.9-amd64.exe"
   $url = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
@@ -88,7 +77,6 @@ function Install-Python {
   Start-Process -FilePath $installer -ArgumentList $args -Wait
   Start-Sleep -Seconds 2
 
-  # Refresh PATH for this session
   $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
               [System.Environment]::GetEnvironmentVariable("Path", "User")
 
@@ -119,7 +107,6 @@ function Install-AppFiles {
   Expand-Archive -Path $zip -DestinationPath $extract -Force
 
   $src = Get-ChildItem $extract -Directory | Select-Object -First 1
-  # Copy app into install root (keep existing data/)
   $dataBackup = $null
   $dataPath = Join-Path $InstallRoot "data"
   if (Test-Path $dataPath) {
@@ -148,21 +135,13 @@ function Install-Deps($venvPython) {
   $req = Join-Path $InstallRoot "requirements.txt"
   & $venvPython -m pip install -r $req
 
-  # Optional: PyAudio for microphone
   Write-Host "  Installing PyAudio (microphone)..."
-  try {
-    & $venvPython -m pip install pipwin 2>$null
-    & $venvPython -m pipwin install pyaudio 2>$null
-  } catch {}
-  try {
-    & $venvPython -m pip install pyaudio 2>$null
-  } catch {
+  try { & $venvPython -m pip install pipwin 2>$null } catch {}
+  try { & $venvPython -m pipwin install pyaudio 2>$null } catch {}
+  try { & $venvPython -m pip install pyaudio 2>$null } catch {
     Write-Warn "PyAudio not installed — voice input may need manual setup"
   }
-
-  try {
-    & $venvPython -m pip install pyautogui 2>$null
-  } catch {}
+  try { & $venvPython -m pip install pyautogui 2>$null } catch {}
 
   Write-Ok "Dependencies installed"
 }
@@ -179,8 +158,6 @@ if errorlevel 1 pause
   Set-Content -Path $launcher -Value $bat -Encoding ASCII
 
   $wsh = New-Object -ComObject WScript.Shell
-
-  # Start Menu
   $startDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$AppName"
   New-Item -ItemType Directory -Force -Path $startDir | Out-Null
   $lnk = $wsh.CreateShortcut((Join-Path $startDir "$AppName.lnk"))
@@ -189,7 +166,6 @@ if errorlevel 1 pause
   $lnk.Description = "$AppName v$AppVersion"
   $lnk.Save()
 
-  # Desktop
   $desk = [Environment]::GetFolderPath("Desktop")
   $lnk2 = $wsh.CreateShortcut((Join-Path $desk "$AppName.lnk"))
   $lnk2.TargetPath = $launcher
@@ -214,7 +190,6 @@ pause
   Set-Content -Path $un -Value $content -Encoding ASCII
 }
 
-# ── Main ──────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "  $AppName Setup v$AppVersion" -ForegroundColor White
 Write-Host "  Install path: $InstallRoot" -ForegroundColor DarkGray
@@ -230,7 +205,6 @@ try {
   }
 
   Install-AppFiles
-
   $venvDir = Join-Path $InstallRoot ".venv"
   $venvPy = Ensure-Venv $py.Exe $venvDir
   Install-Deps $venvPy

@@ -39,61 +39,62 @@ jobs:
       - name: Pack portable ZIP
         shell: pwsh
         run: |
-          $out = "dist/JARVIS-Portable-0.2.1.zip"
+          $ver = "0.2.2"
+          $out = "dist/JARVIS-Portable-$ver.zip"
           if (-not (Test-Path "dist/JARVIS")) { throw "dist/JARVIS missing" }
           Compress-Archive -Path "dist/JARVIS/*" -DestinationPath $out -Force
 
       - name: Pack Setup ZIP (auto Python + deps)
         shell: pwsh
         run: |
+          $ver = "0.2.2"
           $stage = "$env:TEMP\jarvis-setup-stage"
           if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
           New-Item -ItemType Directory -Path $stage | Out-Null
           Copy-Item packaging/setup.bat $stage
           Copy-Item packaging/setup.ps1 $stage
           Copy-Item packaging/README-SETUP.txt $stage
-          Compress-Archive -Path "$stage\*" -DestinationPath "dist/JARVIS-Setup-0.2.1.zip" -Force
+          Compress-Archive -Path "$stage\*" -DestinationPath "dist/JARVIS-Setup-$ver.zip" -Force
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: JARVIS-Windows
           path: |
-            dist/JARVIS-Portable-0.2.1.zip
-            dist/JARVIS-Setup-0.2.1.zip
+            dist/JARVIS-Portable-0.2.2.zip
+            dist/JARVIS-Setup-0.2.2.zip
 
-      - name: Create / update GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.2.1
-          name: JARVIS v0.2.1
+          tag_name: v0.2.2
+          name: JARVIS v0.2.2
           body: |
-            ## JARVIS v0.2.1 — Windows
+            ## JARVIS v0.2.2 — Windows
 
-            ### Вариант 1 — Установщик (Python ставится сам)
+            ### Рекомендуется: установщик с авто-Python
 
-            1. Скачай **JARVIS-Setup-0.2.1.zip**
+            1. Скачай **[JARVIS-Setup-0.2.2.zip](https://github.com/G1drohz/Jarvis/releases/download/v0.2.2/JARVIS-Setup-0.2.2.zip)**
             2. Распакуй
             3. Запусти **setup.bat**
 
-            Установщик:
-            - поставит Python 3.11, если его нет (winget или официальный installer)
+            Установщик сам:
+            - найдёт или установит **Python 3.11**
             - скачает JARVIS
-            - установит все зависимости
+            - поставит зависимости (в т.ч. микрофон, если возможно)
             - создаст ярлыки на рабочем столе и в меню Пуск
 
-            ### Вариант 2 — Portable (без Python)
+            ### Portable (без установки Python)
 
-            1. Скачай **JARVIS-Portable-0.2.1.zip**
-            2. Распакуй
-            3. Запусти **JARVIS.exe**
+            1. Скачай **[JARVIS-Portable-0.2.2.zip](https://github.com/G1drohz/Jarvis/releases/download/v0.2.2/JARVIS-Portable-0.2.2.zip)**
+            2. Распакуй → **JARVIS.exe**
 
-            ### Примечание
-            SmartScreen: «Подробнее» → «Выполнить в любом случае».
-            Микрофон: разреши доступ при запросе Windows.
+            ### Примечания
+            - SmartScreen: «Подробнее» → «Выполнить в любом случае»
+            - Удаление (Setup): `%LOCALAPPDATA%\Programs\JARVIS\uninstall.bat`
           files: |
-            dist/JARVIS-Portable-0.2.1.zip
-            dist/JARVIS-Setup-0.2.1.zip
+            dist/JARVIS-Portable-0.2.2.zip
+            dist/JARVIS-Setup-0.2.2.zip
           draft: false
           make_latest: true
         env:

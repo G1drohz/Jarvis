@@ -1,4 +1,4 @@
-# JARVIS v0.2.1
+# JARVIS v0.2.2
 
 Локальный AI-ассистент для Windows в стиле **Luxify Assistant**.
 
@@ -6,31 +6,20 @@
 
 **https://github.com/G1drohz/Jarvis/releases/latest**
 
-| Файл | Для кого |
-|------|----------|
-| **JARVIS-Setup-0.2.1.zip** | Установщик: сам поставит Python + зависимости + ярлыки |
-| **JARVIS-Portable-0.2.1.zip** | Готовый `JARVIS.exe` без Python |
+| Файл | Что делает |
+|------|------------|
+| **JARVIS-Setup-0.2.2.zip** | Установщик: сам ставит Python + зависимости + ярлыки |
+| **JARVIS-Portable-0.2.2.zip** | Готовый `JARVIS.exe` без Python |
 
-### Установка через Setup
+### Установка (Setup)
 
-1. Скачай `JARVIS-Setup-0.2.1.zip`
+1. Скачай `JARVIS-Setup-*.zip`
 2. Распакуй
 3. Запусти **`setup.bat`**
-4. Дождись окончания → ярлык **JARVIS** на рабочем столе
+4. Ярлык **JARVIS** появится на рабочем столе
 
 ### Portable
 
-Распакуй и запусти `JARVIS.exe`.
-
-## Разработка
-
-```bash
-git clone https://github.com/G1drohz/Jarvis.git
-cd Jarvis
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python -m jarvis.main
-```
+Распакуй → `JARVIS.exe`.
 
 MIT
