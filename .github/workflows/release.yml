@@ -1,0 +1,91 @@
+name: Build Windows Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pillow pyautogui
+          # PyAudio wheel for Windows
+          pip install pipwin
+          pipwin install pyaudio || pip install pyaudio || echo "PyAudio optional"
+
+      - name: Generate icon
+        run: python packaging/make_icon.py
+        continue-on-error: true
+
+      - name: Build with PyInstaller
+        run: |
+          python -m PyInstaller packaging/jarvis.spec --noconfirm --clean
+
+      - name: Pack portable ZIP
+        shell: pwsh
+        run: |
+          $out = "dist/JARVIS-Portable-0.2.1.zip"
+          if (Test-Path "dist/JARVIS") {
+            Compress-Archive -Path "dist/JARVIS/*" -DestinationPath $out -Force
+            Get-Item $out | Format-List Name, Length
+          } else {
+            Write-Error "dist/JARVIS not found"
+            Get-ChildItem -Recurse dist | Select-Object FullName
+            exit 1
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-Windows-Portable
+          path: dist/JARVIS-Portable-0.2.1.zip
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.2.1
+          name: JARVIS v0.2.1
+          body: |
+            ## JARVIS v0.2.1 — Windows
+
+            ### Скачать и запустить
+
+            1. Скачай **JARVIS-Portable-0.2.1.zip**
+            2. Распакуй куда угодно
+            3. Запусти **JARVIS.exe**
+
+            Python устанавливать **не нужно**.
+
+            ### Возможности
+            - Интерфейс в стиле Luxify
+            - Голос + чат
+            - Сценарии / команды
+            - Трей, HUD, монитор
+            - AI-провайдеры (ключи в env по желанию)
+
+            ### Примечание
+            При первом запуске Windows может спросить разрешение для микрофона и SmartScreen — «Подробнее» → «Выполнить в любом случае».
+          files: |
+            dist/JARVIS-Portable-0.2.1.zip
+          draft: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
