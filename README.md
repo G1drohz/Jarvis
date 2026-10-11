@@ -2,29 +2,27 @@
 
 Локальный AI-ассистент для Windows в стиле **Luxify Assistant**.
 
-## Скачать (готово к запуску)
-
-После сборки релиза:
+## Скачать
 
 **https://github.com/G1drohz/Jarvis/releases/latest**
 
-1. Скачай `JARVIS-Portable-0.2.1.zip`
+| Файл | Для кого |
+|------|----------|
+| **JARVIS-Setup-0.2.1.zip** | Установщик: сам поставит Python + зависимости + ярлыки |
+| **JARVIS-Portable-0.2.1.zip** | Готовый `JARVIS.exe` без Python |
+
+### Установка через Setup
+
+1. Скачай `JARVIS-Setup-0.2.1.zip`
 2. Распакуй
-3. Запусти `JARVIS.exe`
+3. Запусти **`setup.bat`**
+4. Дождись окончания → ярлык **JARVIS** на рабочем столе
 
-Python **не нужен**.
+### Portable
 
-Если Windows SmartScreen ругается: «Подробнее» → «Выполнить в любом случае».
+Распакуй и запусти `JARVIS.exe`.
 
-## Сборка релиза (для разработчика)
-
-```
-GitHub → Actions → Build Windows Release → Run workflow
-```
-
-Или локально: `packaging\build.bat`
-
-## Из исходников
+## Разработка
 
 ```bash
 git clone https://github.com/G1drohz/Jarvis.git

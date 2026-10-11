@@ -26,7 +26,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller pillow pyautogui
-          # PyAudio wheel for Windows
           pip install pipwin
           pipwin install pyaudio || pip install pyaudio || echo "PyAudio optional"
 
@@ -35,30 +34,35 @@ jobs:
         continue-on-error: true
 
       - name: Build with PyInstaller
-        run: |
-          python -m PyInstaller packaging/jarvis.spec --noconfirm --clean
+        run: python -m PyInstaller packaging/jarvis.spec --noconfirm --clean
 
       - name: Pack portable ZIP
         shell: pwsh
         run: |
           $out = "dist/JARVIS-Portable-0.2.1.zip"
-          if (Test-Path "dist/JARVIS") {
-            Compress-Archive -Path "dist/JARVIS/*" -DestinationPath $out -Force
-            Get-Item $out | Format-List Name, Length
-          } else {
-            Write-Error "dist/JARVIS not found"
-            Get-ChildItem -Recurse dist | Select-Object FullName
-            exit 1
-          }
+          if (-not (Test-Path "dist/JARVIS")) { throw "dist/JARVIS missing" }
+          Compress-Archive -Path "dist/JARVIS/*" -DestinationPath $out -Force
 
-      - name: Upload artifact
+      - name: Pack Setup ZIP (auto Python + deps)
+        shell: pwsh
+        run: |
+          $stage = "$env:TEMP\jarvis-setup-stage"
+          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item packaging/setup.bat $stage
+          Copy-Item packaging/setup.ps1 $stage
+          Copy-Item packaging/README-SETUP.txt $stage
+          Compress-Archive -Path "$stage\*" -DestinationPath "dist/JARVIS-Setup-0.2.1.zip" -Force
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: JARVIS-Windows-Portable
-          path: dist/JARVIS-Portable-0.2.1.zip
-          if-no-files-found: error
+          name: JARVIS-Windows
+          path: |
+            dist/JARVIS-Portable-0.2.1.zip
+            dist/JARVIS-Setup-0.2.1.zip
 
-      - name: Create GitHub Release
+      - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.2.1
@@ -66,25 +70,30 @@ jobs:
           body: |
             ## JARVIS v0.2.1 — Windows
 
-            ### Скачать и запустить
+            ### Вариант 1 — Установщик (Python ставится сам)
+
+            1. Скачай **JARVIS-Setup-0.2.1.zip**
+            2. Распакуй
+            3. Запусти **setup.bat**
+
+            Установщик:
+            - поставит Python 3.11, если его нет (winget или официальный installer)
+            - скачает JARVIS
+            - установит все зависимости
+            - создаст ярлыки на рабочем столе и в меню Пуск
+
+            ### Вариант 2 — Portable (без Python)
 
             1. Скачай **JARVIS-Portable-0.2.1.zip**
-            2. Распакуй куда угодно
+            2. Распакуй
             3. Запусти **JARVIS.exe**
 
-            Python устанавливать **не нужно**.
-
-            ### Возможности
-            - Интерфейс в стиле Luxify
-            - Голос + чат
-            - Сценарии / команды
-            - Трей, HUD, монитор
-            - AI-провайдеры (ключи в env по желанию)
-
             ### Примечание
-            При первом запуске Windows может спросить разрешение для микрофона и SmartScreen — «Подробнее» → «Выполнить в любом случае».
+            SmartScreen: «Подробнее» → «Выполнить в любом случае».
+            Микрофон: разреши доступ при запросе Windows.
           files: |
             dist/JARVIS-Portable-0.2.1.zip
+            dist/JARVIS-Setup-0.2.1.zip
           draft: false
           make_latest: true
         env:
