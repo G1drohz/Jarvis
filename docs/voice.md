@@ -1,21 +1,40 @@
 # Голос JARVIS
 
-## TTS (речь)
+## Офлайн (по умолчанию) — ближе к киношному
 
-По умолчанию `tts.engine: auto`:
+Используется **Piper** — локальная нейросеть:
 
-1. **edge-tts** — нейросеть Microsoft (бесплатно, без ключа)
-   - `voice: jarvis` → RU Dmitry / EN Ryan (GB)
-2. **pyttsx3** — офлайн запас (голоса Windows)
+| Ключ | Модель | Характер |
+|------|--------|----------|
+| `jarvis_en` | `en_GB-alan-medium` | Британский мужской, спокойный «butler» |
+| `jarvis_ru` | `ru_RU-dmitri-medium` | Русский мужской neural |
 
-### Настройка (`config/default.yaml`)
+Модели (~60 МБ каждая) скачиваются **один раз** в `data/tts_models/`.
+После этого интернет **не нужен**.
+
+> Это не голос Пола Беттани из MCU (права Disney/Marvel).
+> Это лучший бесплатный офлайн-аналог: британский мужской neural-тон.
+
+## Приоритет (engine: auto)
+
+1. **Piper** — офлайн neural  
+2. **pyttsx3** — голоса Windows  
+3. **edge-tts** — онлайн Microsoft (если Piper недоступен)
+
+## Настройка
 
 ```yaml
 tts:
-  enabled: true
-  engine: auto   # auto | edge | pyttsx3 | stub
-  voice: jarvis  # jarvis | jarvis_en | jarvis_ru | male_en | ...
+  engine: auto    # auto | piper | offline | edge | pyttsx3
+  voice: jarvis   # jarvis | jarvis_en | jarvis_ru
+  rate: 160
   volume: 0.9
 ```
 
-Для озвучки edge-tts нужен интернет.
+Только офлайн:
+
+```yaml
+tts:
+  engine: piper
+  voice: jarvis_en
+```

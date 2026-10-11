@@ -1,4 +1,4 @@
-"""Text-to-Speech: Jarvis neural voice (edge-tts) + offline pyttsx3 fallback."""
+"""TTS: offline Piper (Jarvis-like) → pyttsx3 → online edge-tts."""
 
 from __future__ import annotations
 
@@ -6,40 +6,36 @@ import asyncio
 import os
 import tempfile
 import threading
+import wave
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from config.settings import TTSSettings, settings as app_settings
+from jarvis.tts.models import MODELS, ensure_model, resolve_voice_key
 
-if TYPE_CHECKING:
-    pass
-
-# Jarvis-style neural voices (Microsoft Edge TTS — free, no key)
-JARVIS_VOICES = {
-    # British male — closest free "butler / AI assistant" tone
+# Online Microsoft voices (optional fallback)
+EDGE_VOICES = {
     "jarvis": "en-GB-RyanNeural",
     "jarvis_en": "en-GB-RyanNeural",
     "jarvis_ru": "ru-RU-DmitryNeural",
     "en": "en-GB-RyanNeural",
     "ru": "ru-RU-DmitryNeural",
-    "male_en": "en-GB-RyanNeural",
-    "male_ru": "ru-RU-DmitryNeural",
-    "female_en": "en-GB-SoniaNeural",
-    "female_ru": "ru-RU-SvetlanaNeural",
 }
 
 
 class TTSEngine:
-    """Speak text. Prefers edge-tts Jarvis voice; falls back to SAPI5/pyttsx3."""
+    """Jarvis voice: offline neural (Piper) first, then system, then online."""
 
     def __init__(self, cfg: TTSSettings | None = None) -> None:
         self.cfg = cfg or app_settings.tts
-        self._engine = None  # pyttsx3
+        self._engine = None
+        self._piper = None
+        self._piper_path: Path | None = None
         self._backend = "none"
         self._available = False
         self._error: str | None = None
         self._lock = threading.Lock()
-        self._edge_voice = JARVIS_VOICES["jarvis"]
+        self._edge_voice = EDGE_VOICES["jarvis_en"]
+        self._voice_key = "jarvis_en"
         self._init()
 
     def _init(self) -> None:
@@ -48,20 +44,29 @@ class TTSEngine:
             self._error = "TTS engine set to stub"
             return
 
-        # Resolve preferred Jarvis voice from config
         prefer = (self.cfg.voice or "jarvis").lower()
         lang = (getattr(app_settings.app, "language", "ru") or "ru").lower()
+        self._voice_key = resolve_voice_key(prefer, lang)
+        self._edge_voice = EDGE_VOICES.get(
+            prefer if prefer in EDGE_VOICES else ("jarvis_ru" if self._voice_key == "jarvis_ru" else "jarvis_en"),
+            EDGE_VOICES["jarvis_en"],
+        )
 
-        if prefer in ("jarvis", "auto", ""):
-            self._edge_voice = JARVIS_VOICES["jarvis_ru" if lang.startswith("ru") else "jarvis_en"]
-        elif prefer in JARVIS_VOICES:
-            self._edge_voice = JARVIS_VOICES[prefer]
-        else:
-            # allow raw edge voice id
-            self._edge_voice = self.cfg.voice if "Neural" in (self.cfg.voice or "") else JARVIS_VOICES["jarvis"]
+        # 1) Offline Piper neural (preferred for cinematic / offline)
+        if engine_name in ("auto", "piper", "jarvis", "offline"):
+            if self._try_piper():
+                return
+            if engine_name in ("piper", "offline"):
+                # keep trying fallbacks but record error
+                pass
 
-        # Try edge-tts first (neural Jarvis-like voice)
-        if engine_name in ("auto", "edge", "jarvis", "edge-tts"):
+        # 2) Offline system SAPI
+        if engine_name in ("auto", "pyttsx3", "sapi", "jarvis", "offline"):
+            if self._try_sapi():
+                return
+
+        # 3) Online edge-tts
+        if engine_name in ("auto", "edge", "edge-tts", "jarvis"):
             try:
                 import edge_tts  # noqa: F401
 
@@ -69,49 +74,58 @@ class TTSEngine:
                 self._available = True
                 return
             except Exception as e:
-                if engine_name in ("edge", "jarvis", "edge-tts"):
-                    self._error = f"edge-tts unavailable: {e}"
-                    # fall through to pyttsx3
+                self._error = f"edge-tts unavailable: {e}"
 
-        # Offline fallback: pyttsx3 / SAPI5
+        if not self._available:
+            self._error = self._error or "No TTS backend available"
+
+    def _try_piper(self) -> bool:
+        try:
+            from piper import PiperVoice  # type: ignore
+
+            path = ensure_model(self._voice_key)
+            self._piper = PiperVoice.load(str(path))
+            self._piper_path = path
+            self._backend = "piper"
+            self._available = True
+            return True
+        except Exception as e:
+            self._error = f"Piper offline voice: {e}"
+            self._piper = None
+            return False
+
+    def _try_sapi(self) -> bool:
         try:
             import pyttsx3
 
             self._engine = pyttsx3.init()
-            self._engine.setProperty("rate", self.cfg.rate)
+            # Slightly slower = more formal / butler-like
+            rate = int(getattr(self.cfg, "rate", 175) or 175)
+            self._engine.setProperty("rate", max(120, rate - 15))
             self._engine.setProperty("volume", self.cfg.volume)
             self._pick_sapi_voice()
             self._backend = "pyttsx3"
             self._available = True
+            return True
         except Exception as e:
-            self._error = self._error or f"TTS init error: {e}"
+            self._error = f"SAPI: {e}"
+            return False
 
     def _pick_sapi_voice(self) -> None:
         if self._engine is None:
             return
-        prefer = (self.cfg.voice or "jarvis").lower()
         voices = self._engine.getProperty("voices") or []
-        if not voices:
-            return
-
-        keywords = {
-            "jarvis": ["david", "mark", "george", "ryan", "male", "en-gb", "english"],
-            "male": ["david", "mark", "male", "paul", "dmitry"],
-            "female": ["zira", "female", "irina", "helena", "svetlana"],
-            "auto": ["david", "mark", "george", "irina", "dmitry", "russian"],
-        }
-        targets = keywords.get(prefer, keywords["jarvis"])
-
+        targets = [
+            "george", "hazel", "david", "mark", "ryan", "male",
+            "en-gb", "english", "dmitry", "irina",
+        ]
+        if self._voice_key == "jarvis_en":
+            targets = ["george", "hazel", "david", "en-gb", "english", "male"]
         chosen = None
         for v in voices:
-            name = (getattr(v, "name", "") or "").lower()
-            vid = (getattr(v, "id", "") or "").lower()
-            blob = name + " " + vid
-            for kw in targets:
-                if kw in blob:
-                    chosen = v.id
-                    break
-            if chosen:
+            blob = f"{getattr(v, 'name', '')} {getattr(v, 'id', '')}".lower()
+            if any(k in blob for k in targets):
+                chosen = v.id
                 break
         if chosen:
             self._engine.setProperty("voice", chosen)
@@ -128,12 +142,65 @@ class TTSEngine:
     def backend(self) -> str:
         return self._backend
 
+    def _speak_piper(self, text: str) -> None:
+        if self._piper is None:
+            raise RuntimeError("Piper not loaded")
+
+        fd, path = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        try:
+            with wave.open(path, "wb") as wav_file:
+                # piper-tts API variants
+                try:
+                    self._piper.synthesize(text, wav_file)
+                except TypeError:
+                    # newer API: synthesize returns audio chunks
+                    audio = self._piper.synthesize(text)
+                    if hasattr(audio, "audio_int16_bytes"):
+                        wav_file.setnchannels(1)
+                        wav_file.setsampwidth(2)
+                        wav_file.setframerate(getattr(self._piper.config, "sample_rate", 22050))
+                        wav_file.writeframes(audio.audio_int16_bytes)
+                    else:
+                        for chunk in audio:
+                            if wav_file.getnframes() == 0:
+                                wav_file.setnchannels(1)
+                                wav_file.setsampwidth(2)
+                                wav_file.setframerate(getattr(chunk, "sample_rate", 22050))
+                            wav_file.writeframes(chunk.audio_int16_bytes)
+            self._play_wav(path)
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+    def _play_wav(self, path: str) -> None:
+        try:
+            import pygame
+
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            pygame.mixer.music.load(path)
+            pygame.mixer.music.set_volume(float(self.cfg.volume))
+            pygame.mixer.music.play()
+            while pygame.mixer.music.get_busy():
+                pygame.time.wait(40)
+            return
+        except Exception:
+            pass
+        try:
+            import winsound
+
+            winsound.PlaySound(path, winsound.SND_FILENAME)
+        except Exception as e:
+            print(f"[TTS play] {e}")
+
     def _speak_edge(self, text: str) -> None:
         import edge_tts
 
-        async def _gen(path: str) -> None:
-            communicate = edge_tts.Communicate(text, self._edge_voice)
-            await communicate.save(path)
+        async def _gen(p: str) -> None:
+            await edge_tts.Communicate(text, self._edge_voice).save(p)
 
         fd, path = tempfile.mkstemp(suffix=".mp3")
         os.close(fd)
@@ -147,7 +214,6 @@ class TTSEngine:
                 pass
 
     def _play_mp3(self, path: str) -> None:
-        # 1) pygame
         try:
             import pygame
 
@@ -161,8 +227,6 @@ class TTSEngine:
             return
         except Exception:
             pass
-
-        # 2) Windows Media Player via PowerShell
         try:
             import subprocess
 
@@ -179,17 +243,8 @@ class TTSEngine:
                 capture_output=True,
                 timeout=120,
             )
-            return
-        except Exception:
-            pass
-
-        # 3) playsound
-        try:
-            from playsound import playsound
-
-            playsound(path)
         except Exception as e:
-            print(f"[TTS play error] {e}")
+            print(f"[TTS play] {e}")
 
     def _speak_sapi(self, text: str) -> None:
         if self._engine is None:
@@ -208,21 +263,26 @@ class TTSEngine:
         def _run() -> None:
             with self._lock:
                 try:
-                    if self._backend == "edge":
+                    if self._backend == "piper":
+                        self._speak_piper(text)
+                    elif self._backend == "edge":
                         self._speak_edge(text)
                     else:
                         self._speak_sapi(text)
                 except Exception as e:
                     print(f"[TTS error] {e}")
-                    # one-shot fallback
-                    if self._backend == "edge" and self._engine is None:
-                        try:
-                            import pyttsx3
+                    # cascade fallback
+                    try:
+                        if self._backend == "piper":
+                            if self._try_sapi():
+                                self._speak_sapi(text)
+                                return
+                            import edge_tts  # noqa: F401
 
-                            self._engine = pyttsx3.init()
-                            self._speak_sapi(text)
-                        except Exception:
-                            pass
+                            self._backend = "edge"
+                            self._speak_edge(text)
+                    except Exception as e2:
+                        print(f"[TTS fallback] {e2}")
 
         if blocking:
             _run()
@@ -244,11 +304,22 @@ class TTSEngine:
                 pass
 
     def list_voices(self) -> list[str]:
-        out = [f"edge:{k} → {v}" for k, v in JARVIS_VOICES.items()]
-        if self._engine is not None:
-            voices = self._engine.getProperty("voices") or []
-            out.extend(getattr(v, "name", str(v.id)) for v in voices)
+        out = [f"piper offline: {k} → {v['id']}" for k, v in MODELS.items()]
+        out += [f"edge online: {k} → {v}" for k, v in EDGE_VOICES.items()]
         return out
+
+    def ensure_offline_models(self, on_status=None) -> str:
+        """Pre-download both EN/RU offline voices."""
+        paths = []
+        for key in ("jarvis_en", "jarvis_ru"):
+            try:
+                paths.append(str(ensure_model(key, on_status=on_status)))
+            except Exception as e:
+                paths.append(f"{key}: FAIL {e}")
+        # reload piper if needed
+        if self._backend != "piper":
+            self._try_piper()
+        return "; ".join(paths)
 
 
 def create_tts(cfg: TTSSettings | None = None) -> TTSEngine:
