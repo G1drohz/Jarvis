@@ -19,3 +19,6 @@ htmlcov/
 *.log
 .DS_Store
 Thumbs.db
+data/jarvis_memory.db
+data/screenshots/
+# keep data/commands.json and plugins tracked if present

@@ -1,4 +1,4 @@
-"""Simple permission checks."""
+"""Permission checks."""
 
 from __future__ import annotations
 
@@ -28,4 +28,4 @@ class PermissionManager:
         if checker is None:
             raise PermissionError(f"Unknown permission: {action}")
         if not checker():
-            raise PermissionError(f"Permission denied for: {action}")
+            raise PermissionError(f"Permission denied: {action}")
