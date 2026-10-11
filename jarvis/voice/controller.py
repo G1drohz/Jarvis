@@ -1,4 +1,4 @@
-"""Voice controller: STT + TTS + optional continuous listen."""
+"""Voice controller: STT + TTS + wake word."""
 
 from __future__ import annotations
 
@@ -13,13 +13,12 @@ if TYPE_CHECKING:
 
 
 class VoiceController:
-    """High-level voice API used by the UI."""
-
     def __init__(self, agent: "Agent") -> None:
         self.agent = agent
         self.stt = create_stt(settings.stt)
         self.tts = create_tts(settings.tts)
         self.speak_replies = settings.voice.speak_replies
+        self.wake_enabled = settings.voice.continuous
 
     @property
     def stt_ok(self) -> bool:
@@ -32,29 +31,25 @@ class VoiceController:
     def status_message(self) -> str:
         parts = []
         if self.stt_ok:
-            parts.append(f"STT: OK ({settings.stt.engine}, {settings.stt.language})")
+            parts.append(f"STT: {self.stt.backend} ({settings.stt.language})")
         else:
             parts.append(f"STT: {self.stt.error or 'off'}")
         if self.tts_ok:
-            parts.append(f"TTS: OK ({settings.tts.engine})")
+            parts.append("TTS: OK")
         else:
             parts.append(f"TTS: {self.tts.error or 'off'}")
+        wake = settings.voice.wake_word
+        parts.append(f"Wake: «{wake}» {'ON' if self.wake_enabled else 'OFF'}")
         return " · ".join(parts)
 
-    def listen_once(
-        self,
-        on_status: Callable[[str], None] | None = None,
-    ) -> str:
-        """Listen for one phrase and return recognized text."""
+    def listen_once(self, on_status: Callable[[str], None] | None = None) -> str:
         if not settings.stt.enabled:
-            raise RuntimeError("STT выключен в настройках")
+            raise RuntimeError("STT disabled")
         return self.stt.listen_once(on_status=on_status)
 
     def process_voice(
-        self,
-        on_status: Callable[[str], None] | None = None,
+        self, on_status: Callable[[str], None] | None = None
     ) -> tuple[str, str]:
-        """Listen → agent.process → optional speak. Returns (user_text, reply)."""
         text = self.listen_once(on_status=on_status)
         if not text:
             return "", ""
