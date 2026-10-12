@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING
 
 from config.settings import settings
 
@@ -27,18 +28,47 @@ class PluginLoader:
 
     def discover(self) -> list[PluginInfo]:
         found: list[PluginInfo] = []
+        seen: set[str] = set()
         for d in settings.plugins.dirs:
-            root = Path(d)
-            if not root.is_absolute():
-                root = Path(__file__).resolve().parents[2] / d
-            if not root.exists():
-                continue
-            for py in root.glob("*.py"):
-                if py.name.startswith("_"):
+            for root in self._candidate_roots(d):
+                if not root.exists():
                     continue
-                found.append(PluginInfo(name=py.stem, path=str(py)))
-        self.plugins = found
-        return found
+                key = str(root.resolve())
+                if key in seen:
+                    continue
+                seen.add(key)
+                self._scan_dir(root, found)
+        unique: list[PluginInfo] = []
+        names: set[str] = set()
+        for info in found:
+            if info.name in names:
+                continue
+            names.add(info.name)
+            unique.append(info)
+        self.plugins = unique
+        return unique
+
+    def _candidate_roots(self, d: str) -> list[Path]:
+        path = Path(d)
+        if path.is_absolute():
+            return [path]
+        bases: list[Path] = []
+        env = os.environ.get("JARVIS_ROOT")
+        if env:
+            bases.append(Path(env))
+        if getattr(sys, "frozen", False):
+            bases.append(Path(sys.executable).resolve().parent)
+            meipass = getattr(sys, "_MEIPASS", None)
+            if meipass:
+                bases.append(Path(meipass))
+        bases.append(Path(__file__).resolve().parents[2])
+        return [b / path for b in bases]
+
+    def _scan_dir(self, root: Path, found: list[PluginInfo]) -> None:
+        for py in root.glob("*.py"):
+            if py.name.startswith("_") or py.name == "loader.py":
+                continue
+            found.append(PluginInfo(name=py.stem, path=str(py)))
 
     def load_all(self, agent: "Agent") -> list[str]:
         logs = []
