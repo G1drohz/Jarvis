@@ -19,17 +19,20 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Embed UI source (offline, no runtime download)
+      - name: Embed full UI body (offline)
         shell: pwsh
         run: |
           $url = "https://raw.githubusercontent.com/G1drohz/Jarvis/ec6a002c20403a5e7fe429c13f04b46266f4c963/jarvis/ui/main_window.py"
-          $out = "jarvis/ui/_main_window_cache.py"
+          $out = "jarvis/ui/main_window_body.py"
           Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
           $text = Get-Content $out -Raw
           $idx = $text.LastIndexOf("def run_ui")
           if ($idx -gt 0) { $text = $text.Substring(0, $idx).TrimEnd() + "`n" }
-          Set-Content -Path $out -Value $text -Encoding UTF8
-          Write-Host "UI cache size:" (Get-Item $out).Length
+          # Make it a proper module
+          $header = "# Auto-generated UI body for frozen builds`n"
+          Set-Content -Path $out -Value ($header + $text) -Encoding UTF8
+          Copy-Item $out "jarvis/ui/_main_window_cache.py" -Force
+          Write-Host "UI body bytes:" (Get-Item $out).Length
 
       - name: Install dependencies
         run: |
@@ -43,19 +46,24 @@ jobs:
         run: python packaging/make_icon.py
         continue-on-error: true
 
+      - name: Verify jarvis.monitor import
+        run: |
+          python -c "from jarvis.monitor.system import SystemMonitor; print(SystemMonitor().snapshot())"
+          python -c "import jarvis.ui.window_impl; print('MainWindow', jarvis.ui.window_impl.MainWindow)"
+
       - name: Build PyInstaller
         run: python -m PyInstaller packaging/jarvis.spec --noconfirm --clean
 
-      - name: Ensure UI cache inside dist
+      - name: Ensure UI body in dist
         shell: pwsh
         run: |
-          Copy-Item -Force jarvis/ui/_main_window_cache.py dist/JARVIS/ -ErrorAction SilentlyContinue
-          Get-ChildItem dist/JARVIS -Filter "*window*" -Recurse | Select-Object FullName
+          Copy-Item -Force jarvis/ui/main_window_body.py dist/JARVIS/ -ErrorAction SilentlyContinue
+          if (-not (Test-Path "dist/JARVIS")) { throw "dist/JARVIS missing" }
 
       - name: Pack portable ZIP
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist/JARVIS/*" -DestinationPath "dist/JARVIS-Portable-0.3.2.zip" -Force
+          Compress-Archive -Path "dist/JARVIS/*" -DestinationPath "dist/JARVIS-Portable-0.3.3.zip" -Force
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
@@ -64,7 +72,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist\installer | Out-Null
-          (Get-Content packaging\installer.iss) -replace '0\.3\.1','0.3.2' -replace '0\.3\.0','0.3.2' | Set-Content packaging\installer.iss
+          (Get-Content packaging\installer.iss) -replace '0\.3\.\d','0.3.3' | Set-Content packaging\installer.iss
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\installer.iss
           Get-ChildItem dist\installer
 
@@ -73,27 +81,27 @@ jobs:
         with:
           name: JARVIS-Windows
           path: |
-            dist/JARVIS-Portable-0.3.2.zip
+            dist/JARVIS-Portable-0.3.3.zip
             dist/installer/JARVIS-Setup-*.exe
 
-      - name: Release v0.3.2
+      - name: Release v0.3.3
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.3.2
-          name: JARVIS v0.3.2 — UI crash fix
+          tag_name: v0.3.3
+          name: JARVIS v0.3.3 — fix No module named jarvis.monitor
           body: |
-            ## Исправление краша `NameError: free variable e`
+            ## Исправление `No module named 'jarvis.monitor'`
 
-            - UI вшит в установщик (не нужен интернет при старте)
-            - Исправлен баг с переменной исключения
+            PyInstaller теперь включает **все** пакеты `jarvis.*` (monitor, scenarios, voice…).
 
-            ### Скачать
-            - **JARVIS-Setup-0.3.2.exe**
-            - **JARVIS-Portable-0.3.2.zip**
+            ### Скачай именно эту версию
+            - **[JARVIS-Setup-0.3.3.exe](https://github.com/G1drohz/Jarvis/releases/download/v0.3.3/JARVIS-Setup-0.3.3.exe)**
+            - **[JARVIS-Portable-0.3.3.zip](https://github.com/G1drohz/Jarvis/releases/download/v0.3.3/JARVIS-Portable-0.3.3.zip)**
 
-            Удали старую установку и поставь эту версию.
+            Удали старую папку `%LOCALAPPDATA%\Programs\JARVIS` и поставь 0.3.3.
+            **Не используй 0.3.1 / 0.3.2** — там баг.
           files: |
-            dist/JARVIS-Portable-0.3.2.zip
+            dist/JARVIS-Portable-0.3.3.zip
             dist/installer/JARVIS-Setup-*.exe
           make_latest: true
         env:
