@@ -2,9 +2,6 @@ name: Build Windows Release
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
@@ -19,7 +16,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Embed full UI body (offline, from known-good source)
+      - name: Embed full UI body
         shell: pwsh
         run: |
           $url = "https://raw.githubusercontent.com/G1drohz/Jarvis/ec6a002c20403a5e7fe429c13f04b46266f4c963/jarvis/ui/main_window.py"
@@ -28,56 +25,8 @@ jobs:
           $text = Get-Content $out -Raw
           $idx = $text.LastIndexOf("def run_ui")
           if ($idx -gt 0) { $text = $text.Substring(0, $idx).TrimEnd() + "`n" }
-          # Patch: update existing scenario instead of always creating new
-          $old = @'
-    @Slot()
-    def _save_scenario(self) -> None:
-        name = self.cmd_name.text().strip() or "Untitled"
-        phrase = self.cmd_phrase.text().strip()
-        actions = self._parse_actions()
-        sc = Scenario(
-            id=self.agent.scenarios.new_id(),
-            name=name,
-            phrase=phrase,
-            actions=actions,
-        )
-        self.agent.scenarios.add_scenario(self._current_collection_id, sc)
-        self._reload_collections()
-        self._append("system", f"Saved scenario: {name}")
-'@
-          $new = @'
-    @Slot()
-    def _save_scenario(self) -> None:
-        name = self.cmd_name.text().strip() or "Untitled"
-        phrase = self.cmd_phrase.text().strip()
-        actions = self._parse_actions()
-        col_row = self.col_list.currentRow()
-        sc_row = self.sc_list.currentRow()
-        if col_row >= 0 and sc_row >= 0 and col_row < len(self.agent.scenarios.collections):
-            col = self.agent.scenarios.collections[col_row]
-            if sc_row < len(col.scenarios):
-                sc = col.scenarios[sc_row]
-                sc.name = name
-                sc.phrase = phrase
-                sc.actions = actions
-                self.agent.scenarios.save()
-                self._reload_collections()
-                self.col_list.setCurrentRow(col_row)
-                self._append("system", f"Updated scenario: {name}")
-                return
-        sc = Scenario(
-            id=self.agent.scenarios.new_id(),
-            name=name,
-            phrase=phrase,
-            actions=actions,
-        )
-        self.agent.scenarios.add_scenario(self._current_collection_id, sc)
-        self._reload_collections()
-        self._append("system", f"Saved scenario: {name}")
-'@
-          if ($text.Contains($old)) { $text = $text.Replace($old, $new) }
           Set-Content -Path $out -Value $text -Encoding UTF8
-          Write-Host "UI body bytes:" (Get-Item $out).Length
+          Write-Host "UI body:" (Get-Item $out).Length
 
       - name: Install dependencies
         run: |
@@ -94,8 +43,8 @@ jobs:
       - name: Verify imports
         run: |
           python -c "from jarvis.monitor.system import SystemMonitor; print(SystemMonitor().snapshot())"
-          python -c "from jarvis.ui.main_window_body import MainWindow; print('MainWindow', MainWindow)"
-          python -c "from jarvis.ui.window_impl import MainWindow; print('window_impl', MainWindow)"
+          python -c "from jarvis.ui.main_window_body import MainWindow; print(MainWindow)"
+          python -c "from jarvis.ui.window_impl import MainWindow; print(MainWindow)"
 
       - name: Build PyInstaller
         run: python -m PyInstaller packaging/jarvis.spec --noconfirm --clean
@@ -115,7 +64,6 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist\installer | Out-Null
           (Get-Content packaging\installer.iss) -replace '0\.3\.\d','0.3.5' | Set-Content packaging\installer.iss
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\installer.iss
-          Get-ChildItem dist\installer
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -131,20 +79,8 @@ jobs:
           tag_name: v0.3.5
           name: JARVIS v0.3.5 — full audit fixes
           body: |
-            ## Полный аудит кода
-
-            Исправлено:
-            - UI собирается в CI целиком (без битого compressed blob)
-            - `jarvis.monitor` и все пакеты через `collect_submodules`
-            - Пути `data/` относительно JARVIS_ROOT (работают рядом с exe)
-            - Сохранение сценария обновляет выбранный
-            - Настройки TTS/версии синхронизированы
-
-            ### Скачать
-            - **JARVIS-Setup-0.3.5.exe**
-            - **JARVIS-Portable-0.3.5.zip**
-
-            Удали `%LOCALAPPDATA%\Programs\JARVIS` и поставь заново.
+            Full code audit fixes: UI embed in CI, path fixes, collect_submodules, scenario update-save.
+            Download JARVIS-Setup-0.3.5.exe and reinstall.
           files: |
             dist/JARVIS-Portable-0.3.5.zip
             dist/installer/JARVIS-Setup-*.exe
