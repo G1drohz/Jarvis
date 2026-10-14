@@ -1,8 +1,13 @@
-"""MainWindow UI body."""
+"""Placeholder — full UI is written by CI release workflow into this path before PyInstaller.
+
+For local dev without the body, run:
+  curl -o jarvis/ui/main_window_body.py https://raw.githubusercontent.com/G1drohz/Jarvis/ec6a002c20403a5e7fe429c13f04b46266f4c963/jarvis/ui/main_window.py
+and strip the trailing run_ui() function.
+"""
+
 from __future__ import annotations
-import zlib, base64
-from jarvis.ui._ui_p0 import S as S0
-from jarvis.ui._ui_p1 import S as S1
-from jarvis.ui._ui_p2 import S as S2
-from jarvis.ui._ui_p3 import S as S3
-exec(zlib.decompress(base64.b64decode(S0 + S1 + S2 + S3)).decode("utf-8"), globals())
+
+raise ImportError(
+    "main_window_body is not embedded. "
+    "Build via GitHub Actions release, or download the UI source into this file."
+)

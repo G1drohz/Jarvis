@@ -19,6 +19,66 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Embed full UI body (offline, from known-good source)
+        shell: pwsh
+        run: |
+          $url = "https://raw.githubusercontent.com/G1drohz/Jarvis/ec6a002c20403a5e7fe429c13f04b46266f4c963/jarvis/ui/main_window.py"
+          $out = "jarvis/ui/main_window_body.py"
+          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+          $text = Get-Content $out -Raw
+          $idx = $text.LastIndexOf("def run_ui")
+          if ($idx -gt 0) { $text = $text.Substring(0, $idx).TrimEnd() + "`n" }
+          # Patch: update existing scenario instead of always creating new
+          $old = @'
+    @Slot()
+    def _save_scenario(self) -> None:
+        name = self.cmd_name.text().strip() or "Untitled"
+        phrase = self.cmd_phrase.text().strip()
+        actions = self._parse_actions()
+        sc = Scenario(
+            id=self.agent.scenarios.new_id(),
+            name=name,
+            phrase=phrase,
+            actions=actions,
+        )
+        self.agent.scenarios.add_scenario(self._current_collection_id, sc)
+        self._reload_collections()
+        self._append("system", f"Saved scenario: {name}")
+'@
+          $new = @'
+    @Slot()
+    def _save_scenario(self) -> None:
+        name = self.cmd_name.text().strip() or "Untitled"
+        phrase = self.cmd_phrase.text().strip()
+        actions = self._parse_actions()
+        col_row = self.col_list.currentRow()
+        sc_row = self.sc_list.currentRow()
+        if col_row >= 0 and sc_row >= 0 and col_row < len(self.agent.scenarios.collections):
+            col = self.agent.scenarios.collections[col_row]
+            if sc_row < len(col.scenarios):
+                sc = col.scenarios[sc_row]
+                sc.name = name
+                sc.phrase = phrase
+                sc.actions = actions
+                self.agent.scenarios.save()
+                self._reload_collections()
+                self.col_list.setCurrentRow(col_row)
+                self._append("system", f"Updated scenario: {name}")
+                return
+        sc = Scenario(
+            id=self.agent.scenarios.new_id(),
+            name=name,
+            phrase=phrase,
+            actions=actions,
+        )
+        self.agent.scenarios.add_scenario(self._current_collection_id, sc)
+        self._reload_collections()
+        self._append("system", f"Saved scenario: {name}")
+'@
+          if ($text.Contains($old)) { $text = $text.Replace($old, $new) }
+          Set-Content -Path $out -Value $text -Encoding UTF8
+          Write-Host "UI body bytes:" (Get-Item $out).Length
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -69,20 +129,22 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.3.5
-          name: JARVIS v0.3.5 — UI in repo, path fixes
+          name: JARVIS v0.3.5 — full audit fixes
           body: |
-            ## Полный аудит и фиксы
+            ## Полный аудит кода
 
-            - UI вшит в репозиторий
-            - Пути data/ работают рядом с exe
+            Исправлено:
+            - UI собирается в CI целиком (без битого compressed blob)
+            - `jarvis.monitor` и все пакеты через `collect_submodules`
+            - Пути `data/` относительно JARVIS_ROOT (работают рядом с exe)
             - Сохранение сценария обновляет выбранный
-            - collect_submodules для всех jarvis.*
+            - Настройки TTS/версии синхронизированы
 
             ### Скачать
             - **JARVIS-Setup-0.3.5.exe**
             - **JARVIS-Portable-0.3.5.zip**
 
-            Удали `%LOCALAPPDATA%\Programs\JARVIS` перед установкой.
+            Удали `%LOCALAPPDATA%\Programs\JARVIS` и поставь заново.
           files: |
             dist/JARVIS-Portable-0.3.5.zip
             dist/installer/JARVIS-Setup-*.exe
