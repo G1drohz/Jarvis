@@ -9,7 +9,12 @@ from typing import Any
 
 class MemoryStore:
     def __init__(self, db_path: str) -> None:
-        self.path = Path(db_path)
+        raw = Path(db_path)
+        if not raw.is_absolute():
+            from config.settings import ROOT
+
+            raw = ROOT / raw
+        self.path = raw
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
@@ -33,14 +38,11 @@ class MemoryStore:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS facts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    key TEXT UNIQUE NOT NULL,
-                    value TEXT NOT NULL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
                 )
                 """
             )
-            conn.commit()
 
     def add_message(self, role: str, content: str) -> None:
         with self._connect() as conn:
@@ -48,37 +50,27 @@ class MemoryStore:
                 "INSERT INTO messages (role, content) VALUES (?, ?)",
                 (role, content),
             )
-            conn.commit()
 
     def get_recent(self, limit: int = 20) -> list[dict[str, str]]:
         with self._connect() as conn:
             rows = conn.execute(
-                """
-                SELECT role, content FROM messages
-                ORDER BY id DESC LIMIT ?
-                """,
+                "SELECT role, content FROM messages ORDER BY id DESC LIMIT ?",
                 (limit,),
             ).fetchall()
-        # reverse to chronological order
-        return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+        items = [{"role": r["role"], "content": r["content"]} for r in rows]
+        items.reverse()
+        return items
 
     def clear_messages(self) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM messages")
-            conn.commit()
 
     def set_fact(self, key: str, value: str) -> None:
         with self._connect() as conn:
             conn.execute(
-                """
-                INSERT INTO facts (key, value) VALUES (?, ?)
-                ON CONFLICT(key) DO UPDATE SET
-                    value = excluded.value,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
+                "INSERT OR REPLACE INTO facts (key, value) VALUES (?, ?)",
                 (key, value),
             )
-            conn.commit()
 
     def get_fact(self, key: str) -> str | None:
         with self._connect() as conn:

@@ -48,18 +48,27 @@ DEFAULT_DATA = {
                     "name": "YouTube",
                     "phrase": "открой ютуб",
                     "aliases": ["open youtube", "youtube"],
-                    "actions": [{"type": "url", "value": "https://youtube.com"}],
-                }
+                    "actions": [{"type": "url", "value": "https://www.youtube.com"}],
+                },
             ],
         },
-        {"id": "custom", "name": "Custom", "scenarios": []},
+        {
+            "id": "custom",
+            "name": "Custom",
+            "scenarios": [],
+        },
     ]
 }
 
 
 class ScenarioStore:
     def __init__(self, path: str | None = None) -> None:
-        self.path = Path(path or settings.commands.store_path)
+        raw = Path(path or settings.commands.store_path)
+        if not raw.is_absolute():
+            from config.settings import ROOT
+
+            raw = ROOT / raw
+        self.path = raw
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.collections: list[Collection] = []
         self.load()
@@ -97,7 +106,6 @@ class ScenarioStore:
             self.collections = incoming
             self.save()
             return sum(len(c.scenarios) for c in incoming)
-        # merge by id
         by_id = {c.id: c for c in self.collections}
         count = 0
         for col in incoming:
@@ -132,7 +140,6 @@ class ScenarioStore:
                 col.scenarios.append(scenario)
                 self.save()
                 return
-        # create collection
         self.collections.append(
             Collection(id=collection_id, name=collection_id, scenarios=[scenario])
         )
