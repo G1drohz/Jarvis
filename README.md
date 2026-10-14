@@ -1,14 +1,14 @@
-# JARVIS v0.3.3
+# JARVIS v0.3.5
+
+Локальный AI-ассистент для Windows (Luxify / Iron Man style).
 
 ## Скачать
 
 **https://github.com/G1drohz/Jarvis/releases/latest**
 
-Только **v0.3.3** (0.3.1–0.3.2 — сломанный UI).
-
 | Файл | Описание |
 |------|----------|
-| **JARVIS-Setup-0.3.3.exe** | Установщик |
-| **JARVIS-Portable-0.3.3.zip** | Portable |
+| **JARVIS-Setup-0.3.5.exe** | Установщик, Python не нужен |
+| **JARVIS-Portable-0.3.5.zip** | Portable |
 
 MIT

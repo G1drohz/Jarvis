@@ -1,6 +1,6 @@
 app:
   name: JARVIS
-  version: "0.3.3"
+  version: "0.3.5"
   debug: false
   language: ru
 
